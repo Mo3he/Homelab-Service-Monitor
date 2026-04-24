@@ -1,18 +1,27 @@
 # Peekr
 
-A native iOS/iPadOS/macOS app for monitoring your self-hosted homelab services. Built with SwiftUI, no external dependencies.
+A native iOS/iPadOS/macOS app for monitoring your self-hosted homelab services and cloud API quotas. Built with SwiftUI, no external dependencies.
 
 ## Features
 
 ### Monitoring
 - HTTP/HTTPS/TCP health checks with live latency
-- 27 built-in integrations with live metrics fetched from each service's API
+- 29 built-in integrations with live metrics fetched from each service's API
 - Latency sparkline and 30-check history per service
 - Uptime percentage over 24h, 7 days, and 30 days
 - Status event log across all services
 
-### Services supported
+### Self-hosted services
 Home Assistant, AdGuard Home, Grafana, Portainer, Jellyfin, Plex, Sonarr, Radarr, Prowlarr, Overseerr, Proxmox, TrueNAS, Traefik, Unifi Controller, Pi-hole, Nextcloud, Vaultwarden, Immich, Paperless-ngx, Frigate, ntfy, qBittorrent, OpenWrt, Glances, Nginx Proxy Manager, GitHub, and Generic (any HTTP endpoint)
+
+### Cloud API services
+Dedicated monitoring for cloud APIs that don't require a host or port - just an API key:
+
+- **GitHub** - repository stats (stars, forks, open issues), Actions CI status per workflow, API rate limit
+- **Anthropic Claude** - available models, API connectivity check
+- **GitHub Copilot** - subscription plan, suggestion/acceptance stats, API rate limit
+
+Cloud services skip the TCP/HTTP ping entirely and derive their status from whether the API call succeeds.
 
 ### Smart network handling
 - Automatically pauses local-only services when you're off your home network
@@ -34,6 +43,7 @@ Home Assistant, AdGuard Home, Grafana, Portainer, Jellyfin, Plex, Sonarr, Radarr
 - Group services into custom sections
 - Search and filter by status
 - Reorder services and metrics by drag
+- Per-metric hide/show (long-press any metric row in the detail view)
 
 ### Platform
 - iPhone: tab bar layout

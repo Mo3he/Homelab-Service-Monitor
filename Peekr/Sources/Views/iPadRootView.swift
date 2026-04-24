@@ -10,7 +10,7 @@ struct iPadRootView: View {
     @State private var addServiceRequest: AddServiceItem? = nil
     @State private var editingService: Service?
     @State private var serviceToDelete: Service?
-    @State private var sidebarScrolledID: UUID?
+    // scrollPosition removed - List naturally preserves scroll when ForEach identity is stable
     @AppStorage("autoRefreshInterval") private var refreshInterval: Double = 30
 
     var body: some View {
@@ -63,7 +63,6 @@ struct iPadRootView: View {
             serviceRows
         }
         .listStyle(.sidebar)
-            .scrollPosition(id: $sidebarScrolledID)
             .searchable(text: $vm.searchText, prompt: "Search services")
         .navigationTitle("Peekr")
         .toolbar {

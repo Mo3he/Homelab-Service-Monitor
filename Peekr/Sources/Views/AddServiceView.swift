@@ -36,7 +36,7 @@ struct AddServiceView: View {
         self.presetType  = existing == nil ? serviceType : nil
         self.onSave      = onSave
         let preset       = existing == nil ? serviceType : nil
-        _name            = State(initialValue: existing?.name ?? "")
+        _name            = State(initialValue: existing?.name ?? preset?.displayName ?? "")
         _host            = State(initialValue: existing?.host ?? "")
         let presetPort   = preset?.isCloudService == true ? 0 : (preset?.defaultPort ?? 0)
         _port            = State(initialValue: existing.map { String($0.port) } ?? (presetPort > 0 ? String(presetPort) : ""))

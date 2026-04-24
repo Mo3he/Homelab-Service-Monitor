@@ -17,7 +17,7 @@ struct HomeView: View {
     @State private var detailService: Service?
     @State private var showSettings = false
     @State private var serviceToDelete: Service?
-    @State private var listScrolledID: UUID?
+    // scrollPosition removed - List naturally preserves scroll when ForEach identity is stable
     @AppStorage("autoRefreshInterval") private var refreshInterval: Double = 30
 
     var body: some View {
@@ -33,7 +33,6 @@ struct HomeView: View {
                 servicesSection
             }
             .listStyle(.insetGrouped)
-            .scrollPosition(id: $listScrolledID)
             .searchable(text: $vm.searchText, prompt: "Search services")
             .refreshable { vm.refreshAll() }
             .navigationTitle("")
