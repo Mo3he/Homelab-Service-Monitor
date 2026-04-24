@@ -10,6 +10,7 @@ struct iPadRootView: View {
     @State private var addServiceRequest: AddServiceItem? = nil
     @State private var editingService: Service?
     @State private var serviceToDelete: Service?
+    @State private var showServicePicker = false
     // scrollPosition removed - List naturally preserves scroll when ForEach identity is stable
     @AppStorage("autoRefreshInterval") private var refreshInterval: Double = 30
 
@@ -23,6 +24,11 @@ struct iPadRootView: View {
         }
         .sheet(item: $addServiceRequest) { req in
             AddServiceView(serviceType: req.serviceType) { vm.addService($0) }
+        }
+        .sheet(isPresented: $showServicePicker) {
+            ServicePickerView { type in
+                addServiceRequest = AddServiceItem(serviceType: type)
+            }
         }
         .sheet(item: $editingService) { svc in
             AddServiceView(existing: svc) { vm.updateService($0) }
@@ -79,30 +85,15 @@ struct iPadRootView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                AddServiceMenuButton { type in
-                    addServiceRequest = AddServiceItem(serviceType: type)
+                Button { showServicePicker = true } label: {
+                    Image(systemName: "plus")
                 }
             }
         }
     }
 
     private var overallStatusRow: some View {
-        Section {
-            HStack(spacing: 12) {
-                StatusIndicatorView(status: vm.overallHealth, size: 32)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(vm.overallHealth.label).font(.subheadline.bold())
-                    Text("\(vm.onlineCount) online · \(vm.offlineCount) offline")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                if let date = vm.lastRefreshed {
-                    Text(date, style: .relative)
-                        .font(.caption2).foregroundStyle(.tertiary)
-                }
-            }
-            .padding(.vertical, 2)
-        } header: { Text("Overall Health") }
+        iPadOverallStatusRow(vm: vm)
     }
 
     @ViewBuilder
@@ -148,21 +139,7 @@ struct iPadRootView: View {
     }
 
     private func sidebarRow(service: Service) -> some View {
-        let status = vm.effectiveStatus(for: service)
-        return HStack(spacing: 10) {
-            StatusIndicatorView(status: status, size: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(service.name).font(.subheadline.weight(.medium)).lineLimit(1)
-                Text(service.displayURL).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer()
-            if let ms = service.latencyMs {
-                Text(String(format: "%.0f ms", ms))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .padding(.vertical, 2)
+        iPadSidebarRow(service: service)
     }
 
     @ViewBuilder
@@ -198,5 +175,64 @@ struct iPadRootView: View {
 
     private var eventLogPanel: some View {
         EventLogView(vm: vm)
+    }
+}
+
+private struct iPadOverallStatusRow: View {
+    let vm: HomeViewModel
+    @ObservedObject private var live = LiveDataStore.shared
+
+    private var onlineCount: Int   { vm.services.filter { (live.liveData[$0.id]?.status ?? $0.status) == .online   }.count }
+    private var offlineCount: Int  { vm.services.filter { (live.liveData[$0.id]?.status ?? $0.status) == .offline  }.count }
+    private var overallHealth: ServiceStatus {
+        if vm.services.isEmpty { return .unknown }
+        let statuses = vm.services.map { live.liveData[$0.id]?.status ?? $0.status }
+        if statuses.allSatisfy({ $0 == .online }) { return .online }
+        if statuses.contains(.offline) { return .offline }
+        if statuses.contains(.degraded) { return .degraded }
+        return .unknown
+    }
+
+    var body: some View {
+        Section {
+            HStack(spacing: 12) {
+                StatusIndicatorView(status: overallHealth, size: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(overallHealth.label).font(.subheadline.bold())
+                    Text("\(onlineCount) online · \(offlineCount) offline")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let date = vm.lastRefreshed {
+                    Text(date, style: .relative)
+                        .font(.caption2).foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.vertical, 2)
+        } header: { Text("Overall Health") }
+    }
+}
+
+private struct iPadSidebarRow: View {
+    let service: Service
+    @ObservedObject private var live = LiveDataStore.shared
+
+    var body: some View {
+        let status = live.effectiveStatus(for: service)
+        let liveMs = live.liveData[service.id]?.latencyMs ?? service.latencyMs
+        HStack(spacing: 10) {
+            StatusIndicatorView(status: status, size: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(service.name).font(.subheadline.weight(.medium)).lineLimit(1)
+                Text(service.displayURL).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            if let ms = liveMs {
+                Text(String(format: "%.0f ms", ms))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }

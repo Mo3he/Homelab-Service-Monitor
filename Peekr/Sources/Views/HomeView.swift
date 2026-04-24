@@ -17,6 +17,7 @@ struct HomeView: View {
     @State private var detailService: Service?
     @State private var showSettings = false
     @State private var serviceToDelete: Service?
+    @State private var showServicePicker = false
     // scrollPosition removed - List naturally preserves scroll when ForEach identity is stable
     @AppStorage("autoRefreshInterval") private var refreshInterval: Double = 30
 
@@ -49,14 +50,19 @@ struct HomeView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 12) {
                         EditButton()
-                        AddServiceMenuButton { type in
-                            addServiceRequest = AddServiceItem(serviceType: type)
+                        Button { showServicePicker = true } label: {
+                            Image(systemName: "plus")
                         }
                     }
                 }
             }
             .sheet(item: $addServiceRequest) { req in
                 AddServiceView(serviceType: req.serviceType) { vm.addService($0) }
+            }
+            .sheet(isPresented: $showServicePicker) {
+                ServicePickerView { type in
+                    addServiceRequest = AddServiceItem(serviceType: type)
+                }
             }
             .sheet(item: $editingService) { service in
                 AddServiceView(existing: service) { vm.updateService($0) }
