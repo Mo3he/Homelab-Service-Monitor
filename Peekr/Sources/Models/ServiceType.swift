@@ -28,6 +28,8 @@ enum ServiceType: String, Codable, CaseIterable {
     case paperless       = "paperless"
     case frigate         = "frigate"
     case ntfy            = "ntfy"
+    case claude          = "claude"
+    case copilot         = "copilot"
     case generic         = "generic"
 
     var displayName: String {
@@ -57,8 +59,24 @@ enum ServiceType: String, Codable, CaseIterable {
         case .immich:         return "Immich"
         case .paperless:      return "Paperless-ngx"
         case .frigate:        return "Frigate"
-        case .ntfy:           return "ntfy"
-        case .generic:        return "Generic"
+        case .ntfy:           return "ntfy"        case .claude:        return "Claude"
+        case .copilot:       return "GitHub Copilot"        case .generic:        return "Generic"
+        }
+    }
+
+    var isCloudService: Bool {
+        switch self {
+        case .github, .claude, .copilot: return true
+        default: return false
+        }
+    }
+
+    var cloudServiceHost: String? {
+        switch self {
+        case .github:   return "api.github.com"
+        case .claude:   return "api.anthropic.com"
+        case .copilot:  return "api.github.com"
+        default:        return nil
         }
     }
 
@@ -69,6 +87,7 @@ enum ServiceType: String, Codable, CaseIterable {
         case .homeAssistant, .portainer, .jellyfin: return .token
         case .github:                               return .tokenWithRepo
         case .grafana:                              return .token
+        case .claude, .copilot:                     return .token
         case .adGuard, .qBittorrent, .nginxProxyMgr, .openWrt: return .credentials
         case .plex:        return .token
         case .sonarr, .radarr, .prowlarr, .overseerr: return .token
@@ -90,7 +109,9 @@ enum ServiceType: String, Codable, CaseIterable {
     var apiKeyLabel: String {
         switch self {
         case .homeAssistant: return "Long-Lived Access Token"
-        case .github:        return "Personal Access Token"
+        case .github:        return "Personal Access Token (optional)"
+        case .claude:        return "API Key"
+        case .copilot:       return "Personal Access Token"
         case .portainer:     return "API Key"
         case .jellyfin:      return "API Key"
         case .grafana:       return "Service Account Token (optional)"
@@ -107,7 +128,7 @@ enum ServiceType: String, Codable, CaseIterable {
 
     var usernameLabel: String {
         switch self {
-        case .github:        return "Repository (owner/repo)"
+        case .github:        return "Repository (owner/repo, optional)"
         case .nginxProxyMgr: return "Email"
         case .unifi:         return "Username"
         default:             return "Username"
@@ -117,7 +138,9 @@ enum ServiceType: String, Codable, CaseIterable {
     var apiKeyHint: String? {
         switch self {
         case .homeAssistant: return "Settings → Profile → Long-Lived Access Tokens"
-        case .github:        return "Token: GitHub → Settings → Developer settings → Personal access tokens. Needed for private repos and Actions status. Without a token, only rate limit is shown."
+        case .github:        return "Optional: enter owner/repo to track stars, forks, issues and CI status. Token: GitHub Settings > Developer settings > Personal access tokens."
+        case .claude:        return "console.anthropic.com > API Keys. Shows token usage, rate limits and model availability."
+        case .copilot:       return "GitHub PAT with copilot scope. Settings > Developer settings > Personal access tokens. Shows seat info and usage."
         case .portainer:     return "Portainer → My Account → API Keys"
         case .jellyfin:      return "Dashboard → API Keys → +"
         case .grafana:       return "Administration → Service accounts → Add service account → Add token. Without a token, only version and DB health are shown."
@@ -176,6 +199,8 @@ enum ServiceType: String, Codable, CaseIterable {
         case .paperless:     return "doc.text.fill"
         case .frigate:       return "video.fill"
         case .ntfy:          return "bell.fill"
+        case .claude:        return "sparkle"
+        case .copilot:       return "chevron.left.forwardslash.chevron.right"
         case .generic:       return "server.rack"
         }
     }
@@ -208,6 +233,8 @@ enum ServiceType: String, Codable, CaseIterable {
         case .paperless:     return 8000
         case .frigate:       return 5000
         case .ntfy:          return 80
+        case .claude:        return 443
+        case .copilot:       return 443
         case .generic:       return 80
         }
     }
@@ -249,6 +276,8 @@ enum ServiceType: String, Codable, CaseIterable {
         if n.contains("paperless")      { return .paperless }
         if n.contains("frigate")        { return .frigate }
         if n.contains("ntfy")           { return .ntfy }
+        if n.contains("claude")         { return .claude }
+        if n.contains("copilot")        { return .copilot }
         return .generic
     }
 }

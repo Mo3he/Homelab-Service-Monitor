@@ -2,9 +2,21 @@ import Foundation
 import Combine
 import SwiftUI
 
+/// Live display state for a service. Kept separate from the persisted `Service` model so that
+/// background refresh can update display without touching `store.services` - which prevents
+/// the SwiftUI List from losing its scroll position.
+struct ServiceLiveData {
+    var status: ServiceStatus = .unknown
+    var latencyMs: Double?
+    var httpStatusCode: Int?
+    var lastChecked: Date?
+}
+
 @MainActor
 final class HomeViewModel: ObservableObject {
     @Published var services: [Service] = []
+    /// Live display state updated on every check. Does NOT flow through `store.services`.
+    @Published var liveData: [UUID: ServiceLiveData] = [:]
     @Published var metrics: [UUID: [ServiceMetric]] = [:]
     @Published var metricsError: [UUID: String] = [:]
     @Published var isRefreshing = false
@@ -12,11 +24,7 @@ final class HomeViewModel: ObservableObject {
     @Published var searchText = ""
     @Published var statusFilter: ServiceStatus? = nil
 
-    /// IDs currently being checked. Used to show the checking indicator without
-    /// writing .checking to the store (which causes a double-render flash).
     @Published private(set) var checkingIDs: Set<UUID> = []
-
-    /// Status events for the event log (Alerts tab).
     @Published private(set) var events: [StatusEvent] = []
 
     @AppStorage("autoRefreshInterval") private var refreshInterval: Double = 30
@@ -31,7 +39,6 @@ final class HomeViewModel: ObservableObject {
     private let maxEvents = 200
     private let eventsKey = "peekr.statusEvents"
 
-    // Persisted metric display order: service UUID string -> ordered array of metric labels
     private let metricOrderKey = "peekr.metricOrder"
     private var metricOrder: [String: [String]] {
         get {
@@ -50,6 +57,12 @@ final class HomeViewModel: ObservableObject {
         store.$services
             .assign(to: \.services, on: self)
             .store(in: &cancellables)
+        // Seed live display state from persisted service data so the UI shows last-known values
+        // before the first check completes.
+        liveData = Dictionary(uniqueKeysWithValues: store.services.map { s in
+            (s.id, ServiceLiveData(status: s.status, latencyMs: s.latencyMs,
+                                   httpStatusCode: s.httpStatusCode, lastChecked: s.lastChecked))
+        })
         loadEvents()
     }
 
@@ -86,29 +99,32 @@ final class HomeViewModel: ObservableObject {
 
     func effectiveStatus(for service: Service) -> ServiceStatus {
         if checkingIDs.contains(service.id) { return .checking }
+        let status = liveData[service.id]?.status ?? service.status
         // If off-WiFi and service is local-only, show as unknown rather than stale offline
-        if !network.canReachLocal && service.isLocalNetwork && service.status == .offline {
+        if !network.canReachLocal && service.isLocalNetwork && status == .offline {
             return .unknown
         }
-        return service.status
+        return status
     }
 
-    var onlineCount: Int   { services.filter { $0.status == .online }.count }
-    var degradedCount: Int { services.filter { $0.status == .degraded }.count }
-    var offlineCount: Int  { services.filter { $0.status == .offline }.count }
+    var onlineCount: Int   { services.filter { (liveData[$0.id]?.status ?? $0.status) == .online   }.count }
+    var degradedCount: Int { services.filter { (liveData[$0.id]?.status ?? $0.status) == .degraded }.count }
+    var offlineCount: Int  { services.filter { (liveData[$0.id]?.status ?? $0.status) == .offline  }.count }
 
     var overallHealth: ServiceStatus {
         if services.isEmpty { return .unknown }
-        // Only show .checking during a full manual refresh, not individual auto-refresh
         if isRefreshing { return .checking }
-        if services.allSatisfy({ $0.status == .online }) { return .online }
-        if services.contains(where: { $0.status == .offline }) { return .offline }
-        if services.contains(where: { $0.status == .degraded }) { return .degraded }
+        let statuses = services.map { liveData[$0.id]?.status ?? $0.status }
+        if statuses.allSatisfy({ $0 == .online }) { return .online }
+        if statuses.contains(.offline) { return .offline }
+        if statuses.contains(.degraded) { return .degraded }
         return .unknown
     }
 
     // MARK: - Refresh
 
+    /// Manual refresh (button / pull-to-refresh). Uses the same non-disruptive batch path as
+    /// the background refresh, but sets isRefreshing=true for the loading indicator.
     func refreshAll() {
         guard !isRefreshing else { return }
         isRefreshing = true
@@ -117,11 +133,7 @@ final class HomeViewModel: ObservableObject {
         haptic.prepare()
         #endif
         Task {
-            await withTaskGroup(of: Void.self) { group in
-                for service in services {
-                    group.addTask { [weak self] in await self?.checkAndFetch(service) }
-                }
-            }
+            await performBackgroundRefresh(force: true)
             isRefreshing = false
             lastRefreshed = Date()
             #if !targetEnvironment(macCatalyst)
@@ -130,47 +142,52 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
+    /// Interactive single-service refresh (swipe action, service detail pull-to-refresh).
+    /// Shows a per-row checking indicator. Writes to liveData AND persists to store.
     func checkAndFetch(_ service: Service) async {
-        // Skip local-only services when not on WiFi to avoid pointless timeouts
         if !network.canReachLocal && service.isLocalNetwork { return }
-
-        // Verify the service still exists (stale snapshot guard)
         guard store.services.contains(where: { $0.id == service.id }) else { return }
 
         checkingIDs.insert(service.id)
         defer { checkingIDs.remove(service.id) }
 
-        let previousStatus = service.status
+        let previousStatus = liveData[service.id]?.status ?? service.status
         var updated = service
 
-        do {
-            let result = try await PingService.shared.check(service)
-            updated.latencyMs = result.latencyMs
-            updated.httpStatusCode = result.httpStatusCode
-            if let code = result.httpStatusCode {
-                updated.status = (200..<400).contains(code) || code == 401 || code == 403 ? .online : .degraded
-            } else {
-                updated.status = .online
+        if !service.serviceType.isCloudService {
+            do {
+                let result = try await PingService.shared.check(service)
+                updated.latencyMs      = result.latencyMs
+                updated.httpStatusCode = result.httpStatusCode
+                updated.status = result.httpStatusCode.map {
+                    (200..<400).contains($0) || $0 == 401 || $0 == 403 ? .online : .degraded
+                } ?? .online
+            } catch {
+                updated.status         = .offline
+                updated.latencyMs      = nil
+                updated.httpStatusCode = nil
+                updated.lastChecked    = Date()
+                liveData[service.id]   = ServiceLiveData(status: .offline, lastChecked: updated.lastChecked)
+                store.update(updated)
+                metrics[service.id] = []
+                metricsError.removeValue(forKey: service.id)
+                recordTransition(previousStatus: previousStatus, service: updated)
+                historyStore.record(serviceID: service.id, status: .offline, latencyMs: nil)
+                uptimeStore.record(serviceID: service.id, status: .offline)
+                return
             }
-        } catch {
-            updated.status = .offline
-            updated.latencyMs = nil
-            updated.httpStatusCode = nil
-            updated.lastChecked = Date()
-            store.update(updated)
-            metrics[service.id] = []
-            metricsError.removeValue(forKey: service.id)
-            recordTransition(service: updated, from: previousStatus)
-            historyStore.record(serviceID: service.id, status: .offline, latencyMs: nil)
-            uptimeStore.record(serviceID: service.id, status: .offline)
-            return
         }
 
         updated.lastChecked = Date()
+        liveData[updated.id] = ServiceLiveData(status: updated.status, latencyMs: updated.latencyMs,
+                                               httpStatusCode: updated.httpStatusCode,
+                                               lastChecked: updated.lastChecked)
         store.update(updated)
-        recordTransition(service: updated, from: previousStatus)
-        historyStore.record(serviceID: updated.id, status: updated.status, latencyMs: updated.latencyMs)
-        uptimeStore.record(serviceID: updated.id, status: updated.status)
+        recordTransition(previousStatus: previousStatus, service: updated)
+        if !service.serviceType.isCloudService {
+            historyStore.record(serviceID: updated.id, status: updated.status, latencyMs: updated.latencyMs)
+            uptimeStore.record(serviceID: updated.id, status: updated.status)
+        }
 
         let integration = IntegrationProvider.integration(for: updated)
         do {
@@ -178,18 +195,30 @@ final class HomeViewModel: ObservableObject {
             fetched = applyMetricOrder(fetched, serviceID: updated.id)
             metrics[updated.id] = fetched
             metricsError.removeValue(forKey: updated.id)
+            // For cloud services, set status based on whether metrics fetch succeeded
+            if service.serviceType.isCloudService && updated.status == .unknown {
+                updated.status = fetched.isEmpty ? .degraded : .online
+                liveData[updated.id]?.status = updated.status
+            }
         } catch let error as IntegrationError where error == .authFailed {
             metrics[updated.id] = []
             metricsError[updated.id] = "Authentication failed. Check your credentials in Edit."
+            if service.serviceType.isCloudService {
+                liveData[updated.id]?.status = .degraded
+            }
         } catch {
             metrics[updated.id] = []
             metricsError[updated.id] = error.localizedDescription
+            if service.serviceType.isCloudService {
+                liveData[updated.id]?.status = .degraded
+            }
         }
     }
 
     // MARK: - Mutations
 
     func addService(_ service: Service) {
+        liveData[service.id] = ServiceLiveData(status: .unknown)
         store.add(service)
         Task { await checkAndFetch(service) }
     }
@@ -207,11 +236,13 @@ final class HomeViewModel: ObservableObject {
         copy.lastChecked = nil
         copy.latencyMs = nil
         copy.httpStatusCode = nil
+        liveData[copy.id] = ServiceLiveData(status: .unknown)
         store.add(copy)
         Task { await checkAndFetch(copy) }
     }
 
     func removeService(_ service: Service) {
+        liveData.removeValue(forKey: service.id)
         metrics.removeValue(forKey: service.id)
         metricsError.removeValue(forKey: service.id)
         removeMetricOrder(for: service.id)
@@ -223,6 +254,7 @@ final class HomeViewModel: ObservableObject {
     func removeServices(at offsets: IndexSet) {
         for idx in offsets {
             let id = services[idx].id
+            liveData.removeValue(forKey: id)
             metrics.removeValue(forKey: id)
             metricsError.removeValue(forKey: id)
             removeMetricOrder(for: id)
@@ -261,8 +293,8 @@ final class HomeViewModel: ObservableObject {
 
     // MARK: - Status events
 
-    private func recordTransition(service: Service, from old: ServiceStatus) {
-        let new = service.status
+    private func recordTransition(previousStatus old: ServiceStatus, service: Service) {
+        let new = liveData[service.id]?.status ?? service.status
         guard old != new, old != .unknown, old != .checking else { return }
         let event = StatusEvent(
             serviceID: service.id,
@@ -416,80 +448,108 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
-    /// Silent background refresh: no "checking" indicator, all writes batched into a single
-    /// publish cycle so the List never loses its scroll position.
-    private func performBackgroundRefresh() async {
+    /// Silent background refresh. Writes ONLY to `liveData` and `metrics` — never to
+    /// `store.services`. This means `vm.services` stays completely stable → SwiftUI List
+    /// cannot lose its scroll position regardless of how many services are checked.
+    ///
+    /// `force` = true skips the per-service interval check (used by manual refreshAll).
+    private func performBackgroundRefresh(force: Bool = false) async {
         let now = Date()
         let current = store.services
         guard !current.isEmpty else { return }
 
-        var updatedServices: [Service] = []
-        var newMetrics = metrics      // start from current, overwrite only changed services
-        var newErrors   = metricsError
+        // Accumulate all results locally; apply in one batch at the end.
+        var newLiveData  = liveData
+        var newMetrics   = metrics
+        var newErrors    = metricsError
 
         for service in current {
             guard !Task.isCancelled else { break }
-            let interval = service.checkInterval ?? refreshInterval
-            let due = service.lastChecked.map { now.timeIntervalSince($0) >= interval } ?? true
-            guard due else { continue }
+
+            if !force {
+                let interval = service.checkInterval ?? refreshInterval
+                let lastCheck = liveData[service.id]?.lastChecked ?? service.lastChecked
+                let due = lastCheck.map { now.timeIntervalSince($0) >= interval } ?? true
+                guard due else { continue }
+            }
+
             if !network.canReachLocal && service.isLocalNetwork { continue }
             guard store.services.contains(where: { $0.id == service.id }) else { continue }
 
-            let previousStatus = service.status
-            var updated = service
+            let previousStatus = liveData[service.id]?.status ?? service.status
+            var live = ServiceLiveData(lastChecked: Date())
 
-            do {
-                let result = try await PingService.shared.check(service)
-                updated.latencyMs       = result.latencyMs
-                updated.httpStatusCode  = result.httpStatusCode
-                if let code = result.httpStatusCode {
-                    updated.status = (200..<400).contains(code) || code == 401 || code == 403 ? .online : .degraded
-                } else {
-                    updated.status = .online
+            if service.serviceType.isCloudService {
+                // Cloud services: skip the ping, go straight to metrics.
+                let integration = IntegrationProvider.integration(for: service)
+                do {
+                    var fetched = try await integration.fetchMetrics(service: service)
+                    fetched = applyMetricOrder(fetched, serviceID: service.id)
+                    live.status = fetched.isEmpty ? .degraded : .online
+                    newLiveData[service.id] = live
+                    newMetrics[service.id]  = fetched
+                    newErrors.removeValue(forKey: service.id)
+                    var tmp = service; tmp.status = live.status
+                    recordTransition(previousStatus: previousStatus, service: tmp)
+                } catch let e as IntegrationError where e == .authFailed {
+                    live.status = .degraded
+                    newLiveData[service.id] = live
+                    newMetrics[service.id]  = []
+                    newErrors[service.id]   = "Authentication failed. Check your credentials in Edit."
+                } catch {
+                    live.status = .degraded
+                    newLiveData[service.id] = live
+                    newMetrics[service.id]  = []
+                    newErrors[service.id]   = error.localizedDescription
                 }
-            } catch {
-                updated.status         = .offline
-                updated.latencyMs      = nil
-                updated.httpStatusCode = nil
-                updated.lastChecked    = Date()
-                // Side-effects that don't publish to SwiftUI
-                recordTransition(service: updated, from: previousStatus)
-                historyStore.record(serviceID: service.id, status: .offline, latencyMs: nil)
-                uptimeStore.record(serviceID: service.id, status: .offline)
-                updatedServices.append(updated)
-                newMetrics[service.id] = []
-                newErrors.removeValue(forKey: service.id)
                 continue
             }
 
-            updated.lastChecked = Date()
-            recordTransition(service: updated, from: previousStatus)
-            historyStore.record(serviceID: updated.id, status: updated.status, latencyMs: updated.latencyMs)
-            uptimeStore.record(serviceID: updated.id, status: updated.status)
-            updatedServices.append(updated)
-
-            let integration = IntegrationProvider.integration(for: updated)
             do {
-                var fetched = try await integration.fetchMetrics(service: updated)
-                fetched = applyMetricOrder(fetched, serviceID: updated.id)
-                newMetrics[updated.id] = fetched
-                newErrors.removeValue(forKey: updated.id)
-            } catch let e as IntegrationError where e == .authFailed {
-                newMetrics[updated.id] = []
-                newErrors[updated.id]  = "Authentication failed. Check your credentials in Edit."
+                let result  = try await PingService.shared.check(service)
+                live.latencyMs      = result.latencyMs
+                live.httpStatusCode = result.httpStatusCode
+                live.status = result.httpStatusCode.map {
+                    (200..<400).contains($0) || $0 == 401 || $0 == 403 ? .online : .degraded
+                } ?? .online
             } catch {
-                newMetrics[updated.id] = []
-                newErrors[updated.id]  = error.localizedDescription
+                live.status = .offline
+                newLiveData[service.id] = live
+                newMetrics[service.id]  = []
+                newErrors.removeValue(forKey: service.id)
+                var tmp = service; tmp.status = .offline
+                recordTransition(previousStatus: previousStatus, service: tmp)
+                historyStore.record(serviceID: service.id, status: .offline, latencyMs: nil)
+                uptimeStore.record(serviceID: service.id, status: .offline)
+                continue
+            }
+
+            newLiveData[service.id] = live
+            var tmp = service; tmp.status = live.status
+            recordTransition(previousStatus: previousStatus, service: tmp)
+            historyStore.record(serviceID: service.id, status: live.status, latencyMs: live.latencyMs)
+            uptimeStore.record(serviceID: service.id, status: live.status)
+
+            let integration = IntegrationProvider.integration(for: service)
+            do {
+                var fetched = try await integration.fetchMetrics(service: service)
+                fetched = applyMetricOrder(fetched, serviceID: service.id)
+                newMetrics[service.id] = fetched
+                newErrors.removeValue(forKey: service.id)
+            } catch let e as IntegrationError where e == .authFailed {
+                newMetrics[service.id] = []
+                newErrors[service.id]  = "Authentication failed. Check your credentials in Edit."
+            } catch {
+                newMetrics[service.id] = []
+                newErrors[service.id]  = error.localizedDescription
             }
         }
 
-        guard !updatedServices.isEmpty else { return }
-
-        // Apply everything in one synchronous block — coalesced into ≤3 body re-renders
-        // regardless of how many services were checked.
-        store.batchUpdate(updatedServices)  // 1 publish
-        metrics      = newMetrics           // 1 publish
-        metricsError = newErrors            // 1 publish
+        // Apply all state in one synchronous block. `services` is untouched → the
+        // List's ForEach identity is 100% stable → scroll position is preserved.
+        liveData     = newLiveData   // 1 publish
+        metrics      = newMetrics    // 1 publish
+        metricsError = newErrors     // 1 publish
         lastRefreshed = Date()
     }
 

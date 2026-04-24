@@ -33,6 +33,8 @@ enum IntegrationProvider {
         case .paperless:     return PaperlessIntegration()
         case .frigate:       return FrigateIntegration()
         case .ntfy:          return NtfyIntegration()
+        case .claude:        return ClaudeIntegration()
+        case .copilot:       return CopilotIntegration()
         default:             return GenericIntegration()
         }
     }

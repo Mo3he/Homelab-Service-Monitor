@@ -87,7 +87,7 @@ struct ServiceDetailView: View {
                     }
                 }
                 Spacer()
-                if let latency = service.latencyMs {
+                if !service.serviceType.isCloudService, let latency = service.latencyMs {
                     VStack(alignment: .trailing) {
                         Text(String(format: "%.0f ms", latency))
                             .font(.title3.bold().monospacedDigit())
@@ -99,7 +99,7 @@ struct ServiceDetailView: View {
             }
             .padding(.vertical, 4)
 
-            if let code = service.httpStatusCode {
+            if !service.serviceType.isCloudService, let code = service.httpStatusCode {
                 LabeledContent("HTTP Status", value: "\(code)")
             }
             if let date = service.lastChecked {
@@ -113,7 +113,7 @@ struct ServiceDetailView: View {
 
     @ViewBuilder
     private var sparklineSection: some View {
-        if history.count >= 2 {
+        if let service, !service.serviceType.isCloudService, history.count >= 2 {
             Section("Latency Trend") {
                 SparklineView(snapshots: history, height: 40)
                     .padding(.vertical, 4)
@@ -123,14 +123,16 @@ struct ServiceDetailView: View {
 
     @ViewBuilder
     private var uptimeSection: some View {
-        let u24 = UptimeStore.shared.uptimePercent(for: serviceID, days: 1)
-        let u7  = UptimeStore.shared.uptimePercent(for: serviceID, days: 7)
-        let u30 = UptimeStore.shared.uptimePercent(for: serviceID, days: 30)
-        if u24 != nil || u7 != nil || u30 != nil {
-            Section("Uptime") {
-                if let v = u24 { uptimeRow(label: "24 hours", percent: v) }
-                if let v = u7  { uptimeRow(label: "7 days",   percent: v) }
-                if let v = u30 { uptimeRow(label: "30 days",  percent: v) }
+        if let service, !service.serviceType.isCloudService {
+            let u24 = UptimeStore.shared.uptimePercent(for: serviceID, days: 1)
+            let u7  = UptimeStore.shared.uptimePercent(for: serviceID, days: 7)
+            let u30 = UptimeStore.shared.uptimePercent(for: serviceID, days: 30)
+            if u24 != nil || u7 != nil || u30 != nil {
+                Section("Uptime") {
+                    if let v = u24 { uptimeRow(label: "24 hours", percent: v) }
+                    if let v = u7  { uptimeRow(label: "7 days",   percent: v) }
+                    if let v = u30 { uptimeRow(label: "30 days",  percent: v) }
+                }
             }
         }
     }

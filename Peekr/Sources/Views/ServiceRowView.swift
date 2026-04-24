@@ -3,7 +3,15 @@ import SwiftUI
 struct ServiceRowView: View {
     let service: Service
     let metrics: [ServiceMetric]
-    var effectiveStatus: ServiceStatus  // passed in so .checking shows without a store write
+    var effectiveStatus: ServiceStatus
+    /// Live values from HomeViewModel.liveData — take priority over the service struct fields.
+    var liveLatencyMs: Double? = nil
+    var liveHttpStatusCode: Int? = nil
+    var liveLastChecked: Date? = nil
+
+    private var displayLatency: Double?     { liveLatencyMs      ?? service.latencyMs }
+    private var displayCode: Int?           { liveHttpStatusCode  ?? service.httpStatusCode }
+    private var displayLastChecked: Date?   { liveLastChecked     ?? service.lastChecked }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -76,7 +84,7 @@ struct ServiceRowView: View {
             Text(service.name)
                 .font(.body.weight(.semibold))
                 .lineLimit(1)
-            if let code = service.httpStatusCode {
+            if let code = displayCode {
                 Text("HTTP \(code) · \(service.host)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -92,12 +100,12 @@ struct ServiceRowView: View {
 
     private var latencyBadge: some View {
         VStack(alignment: .trailing, spacing: 3) {
-            if let latency = service.latencyMs {
+            if let latency = displayLatency {
                 Text(String(format: "%.0f ms", latency))
                     .font(.caption.monospacedDigit().bold())
                     .foregroundStyle(latencyColor(latency))
             }
-            if let date = service.lastChecked {
+            if let date = displayLastChecked {
                 Text(date, style: .relative)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)

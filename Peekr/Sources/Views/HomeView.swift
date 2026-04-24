@@ -199,34 +199,40 @@ struct HomeView: View {
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.green)
                             .labelStyle(CompactLabelStyle())
-                        if vm.degradedCount > 0 {
-                            Text("\u{00b7}").foregroundStyle(.tertiary).font(.caption)
-                            Label("\(vm.degradedCount) degraded", systemImage: "circle.fill")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.orange)
-                                .labelStyle(CompactLabelStyle())
-                        }
-                        if vm.offlineCount > 0 {
-                            Text("\u{00b7}").foregroundStyle(.tertiary).font(.caption)
-                            Label("\(vm.offlineCount) offline", systemImage: "circle.fill")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.red)
-                                .labelStyle(CompactLabelStyle())
-                        }
+                        // Always reserve space for degraded/offline labels to keep section height stable
+                        Text("\u{00b7}").foregroundStyle(.tertiary).font(.caption)
+                            .opacity(vm.degradedCount > 0 ? 1 : 0)
+                        Label("\(vm.degradedCount) degraded", systemImage: "circle.fill")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.orange)
+                            .labelStyle(CompactLabelStyle())
+                            .opacity(vm.degradedCount > 0 ? 1 : 0)
+                        Text("\u{00b7}").foregroundStyle(.tertiary).font(.caption)
+                            .opacity(vm.offlineCount > 0 ? 1 : 0)
+                        Label("\(vm.offlineCount) offline", systemImage: "circle.fill")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.red)
+                            .labelStyle(CompactLabelStyle())
+                            .opacity(vm.offlineCount > 0 ? 1 : 0)
                     }
                 }
 
                 Spacer()
 
-                if let date = vm.lastRefreshed {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("checked")
-                            .font(.caption2)
-                            .foregroundStyle(.quaternary)
+                // Always reserve space for the timestamp so the section never changes height
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("checked")
+                        .font(.caption2)
+                        .foregroundStyle(.quaternary)
+                    if let date = vm.lastRefreshed {
                         Text(date, style: .relative)
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                             .monospacedDigit()
+                    } else {
+                        Text("–")
+                            .font(.caption)
+                            .foregroundStyle(.clear)
                     }
                 }
             }
@@ -275,7 +281,10 @@ struct HomeView: View {
                     ServiceRowView(
                         service: service,
                         metrics: vm.metrics[service.id] ?? [],
-                        effectiveStatus: vm.effectiveStatus(for: service)
+                        effectiveStatus: vm.effectiveStatus(for: service),
+                        liveLatencyMs: vm.liveData[service.id]?.latencyMs,
+                        liveHttpStatusCode: vm.liveData[service.id]?.httpStatusCode,
+                        liveLastChecked: vm.liveData[service.id]?.lastChecked
                     )
                     .foregroundStyle(.primary)
                 }
