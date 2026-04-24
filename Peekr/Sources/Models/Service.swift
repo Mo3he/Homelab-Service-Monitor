@@ -15,6 +15,8 @@ struct Service: Identifiable, Codable, Hashable {
     var lastChecked: Date?
     var latencyMs: Double?
     var httpStatusCode: Int?
+    /// Override the global auto-refresh interval for this service (seconds). nil = use global setting.
+    var checkInterval: Double?
 
     // Explicit CodingKeys so that adding new optional fields never breaks
     // decoding of older stored data (missing keys decode as nil).
@@ -22,6 +24,7 @@ struct Service: Identifiable, Codable, Hashable {
         case id, name, host, port, scheme, serviceType, group
         case apiKey, username, password
         case status, lastChecked, latencyMs, httpStatusCode
+        case checkInterval
     }
 
     init(id: UUID = UUID(), name: String, host: String, port: Int, scheme: ServiceScheme = .http,
@@ -37,6 +40,7 @@ struct Service: Identifiable, Codable, Hashable {
         self.username = username
         self.password = password
         self.status = .unknown
+        self.checkInterval = nil
     }
 
     var url: URL? {

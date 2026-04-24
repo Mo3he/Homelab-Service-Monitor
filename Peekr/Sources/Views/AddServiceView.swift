@@ -16,6 +16,17 @@ struct AddServiceView: View {
     @State private var password: String
     @State private var showValidationError = false
     @State private var isSanitizing = false   // guard against onChange re-entry
+    @State private var checkInterval: Double   // 0 = use global default
+
+    private static let intervalOptions: [(label: String, value: Double)] = [
+        ("Default (global)", 0),
+        ("30 seconds", 30),
+        ("1 minute", 60),
+        ("2 minutes", 120),
+        ("5 minutes", 300),
+        ("10 minutes", 600),
+        ("15 minutes", 900),
+    ]
 
     init(existing: Service? = nil, serviceType: ServiceType? = nil, onSave: @escaping (Service) -> Void) {
         self.existing = existing
@@ -30,6 +41,7 @@ struct AddServiceView: View {
         _apiKey   = State(initialValue: existing?.apiKey   ?? "")
         _username = State(initialValue: existing?.username ?? "")
         _password = State(initialValue: existing?.password ?? "")
+        _checkInterval = State(initialValue: existing?.checkInterval ?? 0)
     }
 
     private var isEditing: Bool { existing != nil }
@@ -68,6 +80,12 @@ struct AddServiceView: View {
 
                     TextField("Group (optional)", text: $group)
                         .textInputAutocapitalization(.words)
+
+                    Picker("Check Interval", selection: $checkInterval) {
+                        ForEach(Self.intervalOptions, id: \.value) { opt in
+                            Text(opt.label).tag(opt.value)
+                        }
+                    }
                 }
 
                 authSection
@@ -197,6 +215,7 @@ struct AddServiceView: View {
         service.latencyMs      = existing?.latencyMs
         service.lastChecked    = existing?.lastChecked
         service.httpStatusCode = existing?.httpStatusCode
+        service.checkInterval  = checkInterval > 0 ? checkInterval : nil
         onSave(service)
         dismiss()
     }

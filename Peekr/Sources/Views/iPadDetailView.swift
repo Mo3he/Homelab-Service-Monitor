@@ -26,6 +26,7 @@ struct iPadDetailView: View {
                 List {
                     statusSection(service: service)
                     sparklineSection
+                    uptimeSection
                     metricsSection
                     historySection
                 }
@@ -106,6 +107,27 @@ struct iPadDetailView: View {
             Section("Latency Trend") {
                 SparklineView(snapshots: history, height: 40).padding(.vertical, 4)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var uptimeSection: some View {
+        let u24 = UptimeStore.shared.uptimePercent(for: serviceID, days: 1)
+        let u7  = UptimeStore.shared.uptimePercent(for: serviceID, days: 7)
+        let u30 = UptimeStore.shared.uptimePercent(for: serviceID, days: 30)
+        if u24 != nil || u7 != nil || u30 != nil {
+            Section("Uptime") {
+                if let v = u24 { uptimeRow(label: "24 hours", percent: v) }
+                if let v = u7  { uptimeRow(label: "7 days",   percent: v) }
+                if let v = u30 { uptimeRow(label: "30 days",  percent: v) }
+            }
+        }
+    }
+
+    private func uptimeRow(label: String, percent: Double) -> some View {
+        let color: Color = percent >= 99 ? .green : percent >= 95 ? .orange : .red
+        return LabeledContent(label) {
+            Text(String(format: "%.1f%%", percent)).foregroundStyle(color).monospacedDigit()
         }
     }
 

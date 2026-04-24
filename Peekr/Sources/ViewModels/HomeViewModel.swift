@@ -24,6 +24,7 @@ final class HomeViewModel: ObservableObject {
     private let store = ServiceStore.shared
     private let network = NetworkMonitor.shared
     private let historyStore = StatusHistoryStore.shared
+    private let uptimeStore = UptimeStore.shared
     private var cancellables = Set<AnyCancellable>()
     private var autoRefreshTask: Task<Void, Never>?
 
@@ -111,8 +112,10 @@ final class HomeViewModel: ObservableObject {
     func refreshAll() {
         guard !isRefreshing else { return }
         isRefreshing = true
+        #if !targetEnvironment(macCatalyst)
         let haptic = UINotificationFeedbackGenerator()
         haptic.prepare()
+        #endif
         Task {
             await withTaskGroup(of: Void.self) { group in
                 for service in services {
@@ -121,7 +124,9 @@ final class HomeViewModel: ObservableObject {
             }
             isRefreshing = false
             lastRefreshed = Date()
+            #if !targetEnvironment(macCatalyst)
             haptic.notificationOccurred(.success)
+            #endif
         }
     }
 
@@ -157,6 +162,7 @@ final class HomeViewModel: ObservableObject {
             metricsError.removeValue(forKey: service.id)
             recordTransition(service: updated, from: previousStatus)
             historyStore.record(serviceID: service.id, status: .offline, latencyMs: nil)
+            uptimeStore.record(serviceID: service.id, status: .offline)
             return
         }
 
@@ -164,6 +170,7 @@ final class HomeViewModel: ObservableObject {
         store.update(updated)
         recordTransition(service: updated, from: previousStatus)
         historyStore.record(serviceID: updated.id, status: updated.status, latencyMs: updated.latencyMs)
+        uptimeStore.record(serviceID: updated.id, status: updated.status)
 
         let integration = IntegrationProvider.integration(for: updated)
         do {
@@ -209,6 +216,7 @@ final class HomeViewModel: ObservableObject {
         metricsError.removeValue(forKey: service.id)
         removeMetricOrder(for: service.id)
         historyStore.remove(serviceID: service.id)
+        uptimeStore.remove(serviceID: service.id)
         store.remove(id: service.id)
     }
 
@@ -219,6 +227,7 @@ final class HomeViewModel: ObservableObject {
             metricsError.removeValue(forKey: id)
             removeMetricOrder(for: id)
             historyStore.remove(serviceID: id)
+            uptimeStore.remove(serviceID: id)
         }
         store.remove(at: offsets)
     }
@@ -266,12 +275,14 @@ final class HomeViewModel: ObservableObject {
         saveEvents()
 
         // Haptic on meaningful transitions
+        #if !targetEnvironment(macCatalyst)
         let gen = UINotificationFeedbackGenerator()
         if new == .offline {
             gen.notificationOccurred(.error)
         } else if old == .offline && (new == .online || new == .degraded) {
             gen.notificationOccurred(.success)
         }
+        #endif
     }
 
     func clearEvents() {
@@ -342,17 +353,21 @@ final class HomeViewModel: ObservableObject {
         autoRefreshTask?.cancel()
         guard refreshInterval > 0 else { return }
         autoRefreshTask = Task {
+            // Poll every 10 s; each service is only checked when its own interval has elapsed.
+            let pollInterval: Double = 10
             while !Task.isCancelled {
                 if !isRefreshing {
-                    // Read services fresh each cycle to avoid stale snapshots
+                    let now = Date()
                     let current = store.services
                     for service in current {
                         guard !Task.isCancelled else { break }
-                        await checkAndFetch(service)
+                        let interval = service.checkInterval ?? refreshInterval
+                        let due = service.lastChecked.map { now.timeIntervalSince($0) >= interval } ?? true
+                        if due { await checkAndFetch(service) }
                     }
                     if !current.isEmpty { lastRefreshed = Date() }
                 }
-                try? await Task.sleep(for: .seconds(refreshInterval))
+                try? await Task.sleep(for: .seconds(pollInterval))
             }
         }
     }

@@ -58,8 +58,10 @@ struct PeekrWidgetEntryView: View {
 
     var body: some View {
         switch family {
-        case .systemSmall: smallView
+        case .systemSmall:  smallView
         case .systemMedium: mediumView
+        case .accessoryCircular:    accessoryCircularView
+        case .accessoryRectangular: accessoryRectangularView
         default: smallView
         }
     }
@@ -131,6 +133,47 @@ struct PeekrWidgetEntryView: View {
                 .font(.subheadline.weight(.medium))
         }
     }
+
+    // MARK: - Lock screen widgets
+
+    /// Circular: service rack icon with online count
+    private var accessoryCircularView: some View {
+        ZStack {
+            AccessoryWidgetBackground()
+            VStack(spacing: 1) {
+                Image(systemName: entry.offline > 0 ? "exclamationmark.circle" : "checkmark.circle")
+                    .font(.title3.bold())
+                Text("\(entry.online)/\(entry.total)")
+                    .font(.caption2.bold().monospacedDigit())
+            }
+        }
+        .widgetLabel { Text("Peekr") }
+    }
+
+    /// Rectangular: "X/Y online · N offline" or "All online"
+    private var accessoryRectangularView: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label("Peekr", systemImage: "server.rack")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if entry.total == 0 {
+                Text("No services").font(.headline)
+            } else if entry.offline == 0 && entry.degraded == 0 {
+                Text("All \(entry.online) online")
+                    .font(.headline)
+            } else {
+                HStack(spacing: 4) {
+                    Text("\(entry.online)/\(entry.total)").font(.headline.monospacedDigit())
+                    Text("online").font(.subheadline).foregroundStyle(.secondary)
+                }
+                if entry.offline > 0 {
+                    Label("\(entry.offline) offline", systemImage: "xmark.circle.fill")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }
 
 // MARK: - Widget
@@ -146,6 +189,6 @@ struct PeekrWidget: Widget {
         }
         .configurationDisplayName("Peekr")
         .description("See the health of your self-hosted services at a glance.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular])
     }
 }
