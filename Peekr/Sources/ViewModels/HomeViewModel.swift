@@ -314,11 +314,14 @@ final class HomeViewModel: ObservableObject {
     // MARK: - Metric ordering
 
     func moveMetrics(for serviceID: UUID, from source: IndexSet, to destination: Int) {
-        guard var current = metrics[serviceID] else { return }
-        current.move(fromOffsets: source, toOffset: destination)
-        metrics[serviceID] = current
+        // Operate on visible metrics only; hidden ones are appended after
+        var visible = visibleMetrics(for: serviceID)
+        visible.move(fromOffsets: source, toOffset: destination)
+        let hidden = hiddenMetricItems(for: serviceID)
+        let newFull = visible + hidden
+        metrics[serviceID] = newFull
         var order = metricOrder
-        order[serviceID.uuidString] = current.map(\.label)
+        order[serviceID.uuidString] = newFull.map(\.label)
         metricOrder = order
     }
 
@@ -334,6 +337,47 @@ final class HomeViewModel: ObservableObject {
         var order = metricOrder
         order.removeValue(forKey: id.uuidString)
         metricOrder = order
+        var hm = hiddenMetricsStore
+        hm.removeValue(forKey: id.uuidString)
+        hiddenMetricsStore = hm
+    }
+
+    // MARK: - Metric visibility
+
+    private let hiddenMetricsKey = "peekr.hiddenMetrics"
+    private var hiddenMetricsStore: [String: [String]] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: hiddenMetricsKey),
+                  let dict = try? JSONDecoder().decode([String: [String]].self, from: data)
+            else { return [:] }
+            return dict
+        }
+        set {
+            guard let data = try? JSONEncoder().encode(newValue) else { return }
+            UserDefaults.standard.set(data, forKey: hiddenMetricsKey)
+        }
+    }
+
+    func visibleMetrics(for serviceID: UUID) -> [ServiceMetric] {
+        let all = metrics[serviceID] ?? []
+        let hidden = Set(hiddenMetricsStore[serviceID.uuidString] ?? [])
+        return all.filter { !hidden.contains($0.label) }
+    }
+
+    func hiddenMetricItems(for serviceID: UUID) -> [ServiceMetric] {
+        let all = metrics[serviceID] ?? []
+        let hidden = Set(hiddenMetricsStore[serviceID.uuidString] ?? [])
+        return all.filter { hidden.contains($0.label) }
+    }
+
+    func setMetricHidden(_ isHidden: Bool, serviceID: UUID, label: String) {
+        var hm = hiddenMetricsStore
+        let key = serviceID.uuidString
+        var set = Set(hm[key] ?? [])
+        if isHidden { set.insert(label) } else { set.remove(label) }
+        hm[key] = Array(set)
+        hiddenMetricsStore = hm
+        objectWillChange.send()
     }
 
     // MARK: - Export / Import

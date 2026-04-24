@@ -62,12 +62,13 @@ enum ServiceType: String, Codable, CaseIterable {
         }
     }
 
-    enum AuthMode { case none, token, credentials }
+    enum AuthMode { case none, token, credentials, tokenWithRepo }
 
     var authMode: AuthMode {
         switch self {
         case .homeAssistant, .portainer, .jellyfin: return .token
-        case .github, .grafana:                     return .token
+        case .github:                               return .tokenWithRepo
+        case .grafana:                              return .token
         case .adGuard, .qBittorrent, .nginxProxyMgr, .openWrt: return .credentials
         case .plex:        return .token
         case .sonarr, .radarr, .prowlarr, .overseerr: return .token
@@ -89,7 +90,7 @@ enum ServiceType: String, Codable, CaseIterable {
     var apiKeyLabel: String {
         switch self {
         case .homeAssistant: return "Long-Lived Access Token"
-        case .github:        return "Personal Access Token (optional)"
+        case .github:        return "Personal Access Token"
         case .portainer:     return "API Key"
         case .jellyfin:      return "API Key"
         case .grafana:       return "Service Account Token (optional)"
@@ -106,6 +107,7 @@ enum ServiceType: String, Codable, CaseIterable {
 
     var usernameLabel: String {
         switch self {
+        case .github:        return "Repository (owner/repo)"
         case .nginxProxyMgr: return "Email"
         case .unifi:         return "Username"
         default:             return "Username"
@@ -115,7 +117,7 @@ enum ServiceType: String, Codable, CaseIterable {
     var apiKeyHint: String? {
         switch self {
         case .homeAssistant: return "Settings → Profile → Long-Lived Access Tokens"
-        case .github:        return "Enter 'github.com' as the host. Token: github.com → Settings → Developer settings → Personal access tokens → Tokens (classic). No scopes required. Without a token, only the API rate limit is shown."
+        case .github:        return "Token: GitHub → Settings → Developer settings → Personal access tokens. Needed for private repos and Actions status. Without a token, only rate limit is shown."
         case .portainer:     return "Portainer → My Account → API Keys"
         case .jellyfin:      return "Dashboard → API Keys → +"
         case .grafana:       return "Administration → Service accounts → Add service account → Add token. Without a token, only version and DB health are shown."

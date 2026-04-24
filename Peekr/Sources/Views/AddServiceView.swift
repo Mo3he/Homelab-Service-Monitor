@@ -135,6 +135,22 @@ struct AddServiceView: View {
     @ViewBuilder
     private var authSection: some View {
         switch detectedType.authMode {
+        case .tokenWithRepo:
+            Section {
+                TextField(detectedType.usernameLabel, text: $username)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                SecureField(detectedType.apiKeyLabel, text: $apiKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            } header: {
+                Text("Authentication")
+            } footer: {
+                if let hint = detectedType.apiKeyHint {
+                    Text(hint)
+                }
+            }
+
         case .token:
             Section {
                 SecureField(detectedType.apiKeyLabel, text: $apiKey)

@@ -142,11 +142,14 @@ struct ServiceDetailView: View {
         }
     }
 
+    private var visibleMetrics: [ServiceMetric] { vm.visibleMetrics(for: serviceID) }
+    private var hiddenMetricItems: [ServiceMetric] { vm.hiddenMetricItems(for: serviceID) }
+
     @ViewBuilder
     private var metricsSection: some View {
-        if !metrics.isEmpty {
+        if !metrics.isEmpty || metricsError != nil {
             Section("Live Metrics") {
-                ForEach(metrics) { metric in
+                ForEach(visibleMetrics) { metric in
                     HStack {
                         Image(systemName: metric.icon)
                             .foregroundStyle(metric.color)
@@ -158,18 +161,51 @@ struct ServiceDetailView: View {
                             .font(.body.monospacedDigit())
                             .foregroundStyle(metric.isAlert ? metric.color : .secondary)
                     }
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            vm.setMetricHidden(true, serviceID: serviceID, label: metric.label)
+                        } label: {
+                            Label("Hide Metric", systemImage: "eye.slash")
+                        }
+                    }
                 }
                 .onMove { vm.moveMetrics(for: serviceID, from: $0, to: $1) }
-            }
-        } else if let error = metricsError {
-            Section("Live Metrics") {
-                HStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
-                    Text(error)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+
+                if let error = metricsError, visibleMetrics.isEmpty {
+                    HStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                        Text(error)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
+            }
+        }
+
+        if !hiddenMetricItems.isEmpty {
+            Section {
+                ForEach(hiddenMetricItems) { metric in
+                    HStack {
+                        Image(systemName: metric.icon)
+                            .foregroundStyle(metric.color.opacity(0.4))
+                            .frame(width: 24)
+                        Text(metric.label)
+                            .foregroundStyle(.tertiary)
+                        Spacer()
+                        Button {
+                            vm.setMetricHidden(false, serviceID: serviceID, label: metric.label)
+                        } label: {
+                            Image(systemName: "eye")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            } header: {
+                Text("Hidden Metrics")
+            } footer: {
+                Text("Tap the eye icon or long-press a metric to manage visibility.")
             }
         }
     }
