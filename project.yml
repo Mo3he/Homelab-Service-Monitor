@@ -30,6 +30,12 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: "YES"
         DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: "YES"
+    entitlements:
+      path: Peekr/Peekr.entitlements
+      properties:
+        com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)com.mblieden.peekr
+        com.apple.security.application-groups:
+          - group.com.mblieden.peekr
 
   PeekrWidget:
     type: app-extension
@@ -45,6 +51,11 @@ targets:
         SWIFT_VERSION: 5.10
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_NSExtensionPrincipalClass: PeekrWidgetBundle
+    entitlements:
+      path: PeekrWidget/PeekrWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.mblieden.peekr
     dependencies:
       - target: Peekr
         embed: false

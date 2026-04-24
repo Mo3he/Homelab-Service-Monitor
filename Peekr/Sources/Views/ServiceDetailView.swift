@@ -35,31 +35,29 @@ struct ServiceDetailView: View {
                 .navigationTitle(service.name)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Close") { dismiss() }
-                    }
                     ToolbarItem(placement: .topBarLeading) {
-                        HStack(spacing: 16) {
-                            if let url = service.url {
-                                Button { openURL(url) } label: {
-                                    Label("Open", systemImage: "safari")
-                                }
-                            }
-                            Button {
-                                editingService = service
-                            } label: {
-                                Image(systemName: "pencil")
-                            }
-                            Button {
-                                Task { await vm.checkAndFetch(service) }
-                            } label: {
-                                if vm.checkingIDs.contains(serviceID) {
-                                    ProgressView().scaleEffect(0.8)
-                                } else {
-                                    Image(systemName: "arrow.clockwise")
-                                }
+                        if let url = service.url {
+                            Button { openURL(url) } label: {
+                                Label("Open", systemImage: "safari")
                             }
                         }
+                    }
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        Button {
+                            Task { await vm.checkAndFetch(service) }
+                        } label: {
+                            if vm.checkingIDs.contains(serviceID) {
+                                ProgressView().scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                        }
+                        Button {
+                            editingService = service
+                        } label: {
+                            Image(systemName: "pencil")
+                        }
+                        Button("Close") { dismiss() }
                     }
                 }
                 .sheet(item: $editingService) { svc in
