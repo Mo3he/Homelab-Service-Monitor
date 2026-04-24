@@ -160,6 +160,20 @@ enum ServiceType: String, Codable, CaseIterable {
         }
     }
 
+    /// Path to use for latency measurement instead of the root URL.
+    /// Returns nil for services where the root URL is a fine ping target.
+    var pingPath: String? {
+        switch self {
+        case .glances:    return "/api/3/cpu"
+        // Root URLs for these serve PHP/redirect pages that reject HEAD,
+        // causing a slow GET fallback. Use a lightweight API endpoint instead.
+        case .proxmox:    return "/api2/json/version"
+        case .nextcloud:  return "/status.php"
+        case .openWrt:    return "/cgi-bin/luci/"
+        default: return nil
+        }
+    }
+
     var credentialsHint: String? {
         switch self {
         case .adGuard:       return "Leave blank if AdGuard authentication is disabled."

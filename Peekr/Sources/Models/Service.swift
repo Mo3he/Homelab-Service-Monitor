@@ -71,6 +71,15 @@ struct Service: Identifiable, Codable, Hashable {
         URL(string: "\(scheme.rawValue)://\(host):\(port)")
     }
 
+    /// URL used for latency measurement. Uses a lightweight path for services
+    /// whose root URL is heavier (e.g. Glances serves a full web UI at root).
+    var pingURL: URL? {
+        if let path = serviceType.pingPath {
+            return URL(string: "\(scheme.rawValue)://\(host):\(port)\(path)")
+        }
+        return url
+    }
+
     var displayURL: String {
         "\(scheme.rawValue)://\(host):\(port)"
     }

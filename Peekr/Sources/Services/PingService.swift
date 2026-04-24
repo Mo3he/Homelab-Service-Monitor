@@ -30,7 +30,7 @@ actor PingService {
     // MARK: - HTTP
 
     private func httpCheck(_ service: Service) async throws -> CheckResult {
-        guard let url = service.url else { throw CheckError.invalidURL }
+        guard let url = service.pingURL else { throw CheckError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "HEAD"
         request.timeoutInterval = 5

@@ -73,14 +73,22 @@ struct GlancesIntegration: ServiceIntegration {
         return metrics
     }
 
+    /// Cache resolved API version per base URL so we only probe once per host.
+    private static var versionCache: [String: String] = [:]
+
     /// Try Glances API v4 first; fall back to v3 for older installations.
     private func resolvedAPIBase(base: String) async -> String {
+        if let cached = GlancesIntegration.versionCache[base] { return cached }
+        let resolved: String
         if let url = URL(string: "\(base)/api/4/cpu"),
            let result = try? await fetchJSON(url: url) as? [String: Any],
            result["total"] != nil {
-            return "\(base)/api/4"
+            resolved = "\(base)/api/4"
+        } else {
+            resolved = "\(base)/api/3"
         }
-        return "\(base)/api/3"
+        GlancesIntegration.versionCache[base] = resolved
+        return resolved
     }
 
     private func gaugeColor(_ val: Double, warn: Double, crit: Double) -> SwiftUI.Color {
