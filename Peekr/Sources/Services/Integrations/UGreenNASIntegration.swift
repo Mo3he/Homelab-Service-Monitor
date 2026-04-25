@@ -98,7 +98,8 @@ struct UGreenNASIntegration: ServiceIntegration {
 
         // Volume storage
         if let vols = try? await volumesResult as? [String: Any],
-           let result = vols["result"] as? [[String: Any]] {
+           let volData = vols["data"] as? [String: Any],
+           let result = volData["result"] as? [[String: Any]] {
             for vol in result {
                 let name = vol["name"] as? String ?? "Volume"
                 let free = vol["free"] as? Int ?? 0
