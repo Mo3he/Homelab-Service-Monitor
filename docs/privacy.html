@@ -38,16 +38,26 @@
   </ul>
 
   <h2>What data the app stores, and where</h2>
-  <p>Everything Peekr stores stays on your device:</p>
+  <p>Everything Peekr stores stays on your device or within your personal iCloud account:</p>
   <ul>
     <li><strong>Service configuration</strong> (hostnames, ports, service types, display names) is saved
-    to <code>UserDefaults</code> on your device.</li>
+    on your device. When iCloud sync is enabled, this list is also stored in your personal
+    iCloud Key-Value store so it can be shared across your own devices. It is never shared with
+    anyone else and is only accessible by you.</li>
     <li><strong>Credentials</strong> (API keys, usernames, passwords) are stored exclusively in the
-    iOS/macOS Keychain and are never written to iCloud or transmitted anywhere.</li>
-    <li><strong>Status history and metric history</strong> are kept in <code>UserDefaults</code> on
-    your device and are never backed up to any server.</li>
+    iOS/macOS Keychain and are <em>never</em> written to iCloud or transmitted anywhere.</li>
+    <li><strong>Status history and metric history</strong> are kept on your device only and are
+    never synced to iCloud or any server.</li>
     <li><strong>Notification schedules and alert rules</strong> are stored on-device only.</li>
   </ul>
+
+  <h2>iCloud sync</h2>
+  <p>Peekr offers optional iCloud sync to keep your service list consistent across your own
+  Apple devices. When enabled, your service configuration (names, hostnames, ports, and service
+  types) is stored in Apple's iCloud Key-Value Store under your personal Apple ID. Credentials
+  are explicitly excluded and remain in the Keychain on each device. iCloud sync can be disabled
+  at any time in iOS Settings &rsaquo; Apple ID &rsaquo; iCloud. Peekr does not have access to
+  any iCloud data belonging to other users.</p>
 
   <h2>Network access</h2>
   <p>Peekr makes outbound HTTP/HTTPS/TCP connections exclusively to the service addresses
