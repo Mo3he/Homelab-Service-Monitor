@@ -88,6 +88,7 @@ struct MetricDetailSheet: View {
                                 Circle()
                                     .fill(snap.isAlert ? Color.orange : Color.green)
                                     .frame(width: 8, height: 8)
+                                    .accessibilityLabel(snap.isAlert ? "Alert" : "Normal")
                                 Text(snap.value)
                                     .font(.subheadline.monospacedDigit())
                                 Spacer()

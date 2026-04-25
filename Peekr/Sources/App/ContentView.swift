@@ -34,24 +34,20 @@ struct ContentView: View {
     }
 }
 
-/// iPhone: tab bar with Services + Status Log tabs.
+/// iPhone: tab bar with Services, Status Log, Add, and Settings tabs.
 private struct iPhoneRootView: View {
+    @EnvironmentObject private var vm: HomeViewModel
+
     var body: some View {
         TabView {
             HomeView()
                 .tabItem { Label("Services", systemImage: "square.grid.2x2.fill") }
 
-            EventLogTabView()
-                .tabItem { Label("Status Log", systemImage: "clock.arrow.circlepath") }
+            EventLogView(vm: vm)
+                .tabItem { Label("Log", systemImage: "clock.arrow.circlepath") }
+
+            SettingsView(vm: vm)
+                .tabItem { Label("Settings", systemImage: "gearshape") }
         }
-    }
-}
-
-/// Wrapper so the EventLogView gets its own HomeViewModel that shares the same store data.
-private struct EventLogTabView: View {
-    @StateObject private var vm = HomeViewModel()
-
-    var body: some View {
-        EventLogView(vm: vm)
     }
 }

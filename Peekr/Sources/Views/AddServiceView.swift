@@ -20,6 +20,9 @@ struct AddServiceView: View {
     @State private var isSanitizing = false
     @State private var checkInterval: Double
     @State private var notificationsEnabled: Bool
+    @State private var allowSelfSignedCert: Bool
+    @State private var customPingPath: String
+    @State private var latencyDegradedMs: String
 
     private static let intervalOptions: [(label: String, value: Double)] = [
         ("Default (global)", 0),
@@ -47,6 +50,9 @@ struct AddServiceView: View {
         _password        = State(initialValue: existing?.password ?? "")
         _checkInterval   = State(initialValue: existing?.checkInterval ?? 0)
         _notificationsEnabled = State(initialValue: existing?.notificationsEnabled ?? true)
+        _allowSelfSignedCert  = State(initialValue: existing?.allowSelfSignedCert ?? false)
+        _customPingPath       = State(initialValue: existing?.customPingPath ?? "")
+        _latencyDegradedMs    = State(initialValue: existing?.latencyDegradedMs.map { String(Int($0)) } ?? "")
     }
 
     private var isEditing: Bool { existing != nil }
@@ -183,6 +189,27 @@ struct AddServiceView: View {
                 username = ""
                 password = ""
             }
+
+        Section {
+            TextField("Custom ping path (e.g. /health)", text: $customPingPath)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+            TextField("Degraded above (ms, optional)", text: $latencyDegradedMs)
+                .keyboardType(.numberPad)
+        } header: {
+            Text("Advanced")
+        } footer: {
+            Text("A custom ping path overrides the integration default. The latency threshold marks the service as degraded when ping responses exceed this value.")
+        }
+
+        if scheme == .https {
+            Section {
+                Toggle("Allow self-signed certificate", isOn: $allowSelfSignedCert)
+            } footer: {
+                Text("Trusts invalid TLS certs for this host only. Use for homelab services with self-issued certs. Off by default.")
+            }
+        }
 
         Section {
             HStack(alignment: .top, spacing: 10) {
@@ -332,6 +359,10 @@ struct AddServiceView: View {
         service.httpStatusCode = existing?.httpStatusCode
         service.checkInterval  = checkInterval > 0 ? checkInterval : nil
         service.notificationsEnabled = notificationsEnabled
+        service.allowSelfSignedCert  = scheme == .https ? allowSelfSignedCert : false
+        let trimmedPath = customPingPath.trimmingCharacters(in: .whitespaces)
+        service.customPingPath = trimmedPath.isEmpty ? nil : trimmedPath
+        service.latencyDegradedMs = Double(latencyDegradedMs).flatMap { $0 > 0 ? $0 : nil }
         onSave(service)
         dismiss()
     }

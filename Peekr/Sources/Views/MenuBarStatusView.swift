@@ -1,9 +1,9 @@
-#if targetEnvironment(macCatalyst)
+#if os(macOS) && !targetEnvironment(macCatalyst)
 import SwiftUI
 
 /// Compact service list shown in the macOS menu bar popover.
 struct MenuBarStatusView: View {
-    @StateObject private var vm = HomeViewModel()
+    @EnvironmentObject private var vm: HomeViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -15,12 +15,13 @@ struct MenuBarStatusView: View {
                 Button {
                     vm.refreshAll()
                 } label: {
-                    Image(systemName: vm.isRefreshing ? "arrow.clockwise" : "arrow.clockwise")
+                    Image(systemName: "arrow.clockwise")
                         .rotationEffect(vm.isRefreshing ? .degrees(360) : .zero)
                         .animation(vm.isRefreshing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default,
                                    value: vm.isRefreshing)
                 }
                 .buttonStyle(.borderless)
+                .disabled(vm.isRefreshing)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)

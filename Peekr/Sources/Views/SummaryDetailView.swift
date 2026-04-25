@@ -5,7 +5,7 @@ import SwiftUI
 struct SummaryDetailView: View {
     let schedule: MetricSummarySchedule
 
-    @StateObject private var vm = HomeViewModel()
+    @EnvironmentObject private var vm: HomeViewModel
     @ObservedObject private var live = LiveDataStore.shared
     @Environment(\.dismiss) private var dismiss
 

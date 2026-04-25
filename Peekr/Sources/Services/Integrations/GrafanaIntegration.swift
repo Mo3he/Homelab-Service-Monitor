@@ -29,11 +29,14 @@ struct GrafanaIntegration: ServiceIntegration {
         }
 
         guard let token = service.apiKey, !token.isEmpty else { return metrics }
+        // Snapshot headers as `let` so the `async let` fetches don't capture a `var`
+        // (which Swift 6 mode rejects).
+        let authHeaders = headers.merging(["Authorization": "Bearer \(token)"]) { _, new in new }
 
         // Datasources + dashboards in parallel (both need auth)
-        async let dsResult      = fetchJSON(url: URL(string: "\(base)/api/datasources")!, headers: headers)
-        async let dashResult    = fetchJSON(url: URL(string: "\(base)/api/search?type=dash-db&limit=1000")!, headers: headers)
-        async let alertsResult  = fetchJSON(url: URL(string: "\(base)/api/prometheus/grafana/api/v1/alerts")!, headers: headers)
+        async let dsResult      = fetchJSON(url: URL(string: "\(base)/api/datasources")!, headers: authHeaders)
+        async let dashResult    = fetchJSON(url: URL(string: "\(base)/api/search?type=dash-db&limit=1000")!, headers: authHeaders)
+        async let alertsResult  = fetchJSON(url: URL(string: "\(base)/api/prometheus/grafana/api/v1/alerts")!, headers: authHeaders)
 
         if let ds = try? await dsResult as? [[String: Any]] {
             metrics.append(ServiceMetric(label: "Datasources", value: "\(ds.count)", icon: "cylinder.fill", color: .primary))

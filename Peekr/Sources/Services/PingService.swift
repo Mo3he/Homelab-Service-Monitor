@@ -14,8 +14,11 @@ actor PingService {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 5
         config.timeoutIntervalForResource = 5
-        // Follow redirects so e.g. http→https services report correctly
-        return URLSession(configuration: config)
+        // Follow redirects so e.g. http→https services report correctly.
+        // Delegate only trusts hosts the user has opted into for self-signed certs.
+        return URLSession(configuration: config,
+                          delegate: InsecureTrustRegistry.shared,
+                          delegateQueue: nil)
     }()
 
     func check(_ service: Service) async throws -> CheckResult {
@@ -30,22 +33,30 @@ actor PingService {
 
     private func httpCheck(_ service: Service) async throws -> CheckResult {
         guard let url = service.pingURL else { throw CheckError.invalidURL }
+        let totalBudget: TimeInterval = 5
+        let start = Date()
+
         var request = URLRequest(url: url)
         request.httpMethod = "HEAD"
-        request.timeoutInterval = 5
+        request.timeoutInterval = totalBudget
 
-        let start = Date()
         let (_, headResponse) = try await session.data(for: request)
         let headCode = (headResponse as? HTTPURLResponse)?.statusCode
 
-        // Some servers (e.g. Home Assistant) reject HEAD with 405 — retry with GET
+        // Some servers (e.g. Home Assistant) reject HEAD with 405 — retry with GET, but
+        // cap the total wall-clock budget for the whole HEAD+GET pair at `totalBudget`.
         if headCode == 405 {
+            let elapsed = Date().timeIntervalSince(start)
+            let remaining = totalBudget - elapsed
+            guard remaining > 0.1 else {
+                // No time left for a GET — return the HEAD result rather than waste another timeout cycle.
+                return CheckResult(latencyMs: elapsed * 1000, httpStatusCode: headCode)
+            }
             var getReq = URLRequest(url: url)
             getReq.httpMethod = "GET"
-            getReq.timeoutInterval = 5
-            let getStart = Date()
+            getReq.timeoutInterval = remaining
             let (_, getResponse) = try await session.data(for: getReq)
-            let ms = Date().timeIntervalSince(getStart) * 1000
+            let ms = Date().timeIntervalSince(start) * 1000
             let code = (getResponse as? HTTPURLResponse)?.statusCode
             return CheckResult(latencyMs: ms, httpStatusCode: code)
         }

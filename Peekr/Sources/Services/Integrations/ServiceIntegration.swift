@@ -46,15 +46,54 @@ extension ServiceIntegration {
         var request = URLRequest(url: url)
         request.timeoutInterval = 8
         for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await IntegrationHTTP.session.data(for: request)
         if let http = response as? HTTPURLResponse {
-            if http.statusCode == 401 || http.statusCode == 403 { throw IntegrationError.authFailed }
-            if http.statusCode >= 500 { throw IntegrationError.unexpectedFormat }
+            switch http.statusCode {
+            case 401, 403:
+                throw IntegrationError.authFailed
+            case 429, 502, 503, 504:
+                throw IntegrationError.transient(retryAfter: parseRetryAfter(http))
+            case 500...:
+                throw IntegrationError.serviceError(statusCode: http.statusCode)
+            default:
+                break
+            }
         }
-        return try JSONSerialization.jsonObject(with: data)
+        do {
+            return try JSONSerialization.jsonObject(with: data)
+        } catch {
+            throw IntegrationError.unexpectedFormat
+        }
     }
 
     func baseURL(_ service: Service) -> String {
         "\(service.scheme.rawValue)://\(service.host):\(service.port)"
     }
+
+    /// Reads a Retry-After header. RFC 7231 allows either delta-seconds or HTTP-date.
+    private func parseRetryAfter(_ response: HTTPURLResponse) -> TimeInterval? {
+        guard let raw = response.value(forHTTPHeaderField: "Retry-After") else { return nil }
+        if let secs = TimeInterval(raw) { return secs }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        if let date = formatter.date(from: raw) {
+            return max(0, date.timeIntervalSinceNow)
+        }
+        return nil
+    }
+}
+
+/// Single ephemeral URLSession shared by all integrations. Mirrors the configuration
+/// PingService uses so transport behavior (timeouts, redirects, no caching) is consistent.
+enum IntegrationHTTP {
+    static let session: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 8
+        config.timeoutIntervalForResource = 12
+        return URLSession(configuration: config,
+                          delegate: InsecureTrustRegistry.shared,
+                          delegateQueue: nil)
+    }()
 }

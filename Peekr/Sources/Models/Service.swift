@@ -19,6 +19,12 @@ struct Service: Identifiable, Codable, Hashable {
     var checkInterval: Double?
     /// Whether offline/recovery notifications are enabled for this service. Defaults to true.
     var notificationsEnabled: Bool
+    /// User opt-in: trust self-signed / invalid TLS certificates for this service. Off by default.
+    var allowSelfSignedCert: Bool
+    /// Override the ping path (e.g. "/health"). nil = use ServiceType's default.
+    var customPingPath: String?
+    /// Latency above this (ms) should report as `.degraded` even on 2xx. nil = no threshold.
+    var latencyDegradedMs: Double?
 
     // Explicit CodingKeys so that adding new optional fields never breaks
     // decoding of older stored data (missing keys decode as nil).
@@ -27,6 +33,7 @@ struct Service: Identifiable, Codable, Hashable {
         case apiKey, username, password
         case status, lastChecked, latencyMs, httpStatusCode
         case checkInterval, notificationsEnabled
+        case allowSelfSignedCert, customPingPath, latencyDegradedMs
     }
 
     init(id: UUID = UUID(), name: String, host: String, port: Int, scheme: ServiceScheme = .http,
@@ -44,6 +51,9 @@ struct Service: Identifiable, Codable, Hashable {
         self.status = .unknown
         self.checkInterval = nil
         self.notificationsEnabled = true
+        self.allowSelfSignedCert = false
+        self.customPingPath = nil
+        self.latencyDegradedMs = nil
     }
 
     /// Custom decoder so that new fields added after initial release default gracefully.
@@ -65,6 +75,9 @@ struct Service: Identifiable, Codable, Hashable {
         httpStatusCode  = try c.decodeIfPresent(Int.self,           forKey: .httpStatusCode)
         checkInterval   = try c.decodeIfPresent(Double.self,        forKey: .checkInterval)
         notificationsEnabled = try c.decodeIfPresent(Bool.self,     forKey: .notificationsEnabled) ?? true
+        allowSelfSignedCert  = try c.decodeIfPresent(Bool.self,     forKey: .allowSelfSignedCert)  ?? false
+        customPingPath       = try c.decodeIfPresent(String.self,   forKey: .customPingPath)
+        latencyDegradedMs    = try c.decodeIfPresent(Double.self,   forKey: .latencyDegradedMs)
     }
 
     var url: URL? {
@@ -73,8 +86,13 @@ struct Service: Identifiable, Codable, Hashable {
 
     /// URL used for latency measurement. Uses a lightweight path for services
     /// whose root URL is heavier (e.g. Proxmox, Nextcloud serve heavy pages at root).
+    /// A user-supplied `customPingPath` overrides the type's default.
     var pingURL: URL? {
         if serviceType.prefersTCPPing { return url } // will be handled as TCP in PingService
+        if let custom = customPingPath, !custom.isEmpty {
+            let path = custom.hasPrefix("/") ? custom : "/\(custom)"
+            return URL(string: "\(scheme.rawValue)://\(host):\(port)\(path)")
+        }
         if let path = serviceType.pingPath {
             return URL(string: "\(scheme.rawValue)://\(host):\(port)\(path)")
         }

@@ -12,6 +12,16 @@ final class ServiceStore: ObservableObject {
     private let key = "peekr.services.v3"
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+
+    /// Last-saved credential snapshot per service. Used to skip redundant Keychain writes
+    /// on every `save()` (move/reorder/status updates don't touch creds, so we shouldn't
+    /// hit `SecItem*` for every one).
+    private var savedCredsSnapshot: [UUID: CredsTriple] = [:]
+    private struct CredsTriple: Equatable {
+        let apiKey: String?
+        let username: String?
+        let password: String?
+    }
     // PAID_ACCOUNT: private let icloud = NSUbiquitousKeyValueStore.default
 
     // PAID_ACCOUNT: switch to App Group suite when entitlements are active:
@@ -79,6 +89,11 @@ final class ServiceStore: ObservableObject {
         save()
     }
 
+    func reorder(to ordered: [Service]) {
+        services = ordered
+        save()
+    }
+
     // MARK: - Persistence
 
     private func save() {
@@ -94,6 +109,8 @@ final class ServiceStore: ObservableObject {
         guard let data = try? encoder.encode(sanitized) else { return }
         // Write to UserDefaults (App Group suite when entitlements are active - see PAID_ACCOUNT above)
         defaults.set(data, forKey: key)
+        // Keep the TLS-trust registry in sync so sessions know which hosts are user-trusted.
+        InsecureTrustRegistry.shared.reload(from: services)
         // PAID_ACCOUNT: uncomment to push to iCloud KV store for cross-device sync
         // icloud.set(data, forKey: key)
         // icloud.synchronize()
@@ -198,18 +215,34 @@ final class ServiceStore: ObservableObject {
 
     private func saveCredentials(for service: Service) {
         let id = service.id
-        if let v = service.apiKey,   !v.isEmpty { KeychainHelper.save(v, account: keychainKey("apikey",   id: id)) }
-        else                                    { KeychainHelper.delete(account: keychainKey("apikey",    id: id)) }
-        if let v = service.username, !v.isEmpty { KeychainHelper.save(v, account: keychainKey("username", id: id)) }
-        else                                    { KeychainHelper.delete(account: keychainKey("username",  id: id)) }
-        if let v = service.password, !v.isEmpty { KeychainHelper.save(v, account: keychainKey("password", id: id)) }
-        else                                    { KeychainHelper.delete(account: keychainKey("password",  id: id)) }
+        let current = CredsTriple(
+            apiKey:   service.apiKey?.isEmpty   == false ? service.apiKey   : nil,
+            username: service.username?.isEmpty == false ? service.username : nil,
+            password: service.password?.isEmpty == false ? service.password : nil
+        )
+        if savedCredsSnapshot[id] == current { return }
+
+        let prev = savedCredsSnapshot[id]
+        if current.apiKey != prev?.apiKey {
+            if let v = current.apiKey { KeychainHelper.save(v, account: keychainKey("apikey", id: id)) }
+            else                      { KeychainHelper.delete(account: keychainKey("apikey", id: id)) }
+        }
+        if current.username != prev?.username {
+            if let v = current.username { KeychainHelper.save(v, account: keychainKey("username", id: id)) }
+            else                        { KeychainHelper.delete(account: keychainKey("username", id: id)) }
+        }
+        if current.password != prev?.password {
+            if let v = current.password { KeychainHelper.save(v, account: keychainKey("password", id: id)) }
+            else                        { KeychainHelper.delete(account: keychainKey("password", id: id)) }
+        }
+        savedCredsSnapshot[id] = current
     }
 
     private func deleteCredentials(for id: UUID) {
         KeychainHelper.delete(account: keychainKey("apikey",   id: id))
         KeychainHelper.delete(account: keychainKey("username", id: id))
         KeychainHelper.delete(account: keychainKey("password", id: id))
+        savedCredsSnapshot.removeValue(forKey: id)
     }
 
     private static let sampleServices: [Service] = []

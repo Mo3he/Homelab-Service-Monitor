@@ -48,7 +48,8 @@ Cloud services skip the TCP/HTTP ping entirely and derive their status from whet
 ### Platform
 - iPhone: tab bar layout
 - iPad: three-column NavigationSplitView (services | detail | event log)
-- Mac (Catalyst): full app + menu bar status indicator
+- Mac (Catalyst): full app
+- Mac (native macOS target): menu bar status indicator (requires a separate native macOS target; not available under Catalyst since `MenuBarExtra` is macOS-only)
 - Onboarding flow on first launch
 
 ### Data

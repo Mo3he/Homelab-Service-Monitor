@@ -37,8 +37,10 @@ final class SummaryNotificationManager {
         let enabled = schedules.filter(\.isEnabled)
         guard !enabled.isEmpty else { return }
 
-        let granted = await (try? center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
-        guard granted else { return }
+        // Only prompt for authorization if it's still undetermined; otherwise honor the
+        // existing setting. Repeatedly calling requestAuthorization on every schedule write
+        // is noisy and pointless once the user has answered.
+        guard await ensureAuthorization(center: center) else { return }
 
         let services = ServiceStore.shared.services
         let liveMetrics = LiveDataStore.shared.metrics
@@ -53,6 +55,20 @@ final class SummaryNotificationManager {
                 trigger: trigger
             )
             try? await center.add(request)
+        }
+    }
+
+    private func ensureAuthorization(center: UNUserNotificationCenter) async -> Bool {
+        let settings = await center.notificationSettings()
+        switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            return true
+        case .notDetermined:
+            return (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        case .denied:
+            return false
+        @unknown default:
+            return false
         }
     }
 

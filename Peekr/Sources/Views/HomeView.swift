@@ -10,121 +10,136 @@ private struct CompactLabelStyle: LabelStyle {
 }
 
 struct HomeView: View {
-    @StateObject private var vm = HomeViewModel()
-    @StateObject private var network = NetworkMonitor.shared
+    @EnvironmentObject private var vm: HomeViewModel
+    @ObservedObject private var network = NetworkMonitor.shared
     @State private var addServiceRequest: AddServiceItem? = nil
     @State private var editingService: Service?
     @State private var detailService: Service?
-    @State private var showSettings = false
     @State private var serviceToDelete: Service?
     @State private var showServicePicker = false
     @State private var hasAppeared = false
+
+    @State private var showOverallHealth = false
+    @State private var isReordering = false
+    @State private var isSearchActive = false
     // scrollPosition removed - List naturally preserves scroll when ForEach identity is stable
     @AppStorage("autoRefreshInterval") private var refreshInterval: Double = 30
 
     var body: some View {
         NavigationStack {
+            serviceList
+                .navigationTitle("Peekr")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    if !isSearchActive {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button { isSearchActive = true } label: {
+                                Image(systemName: "magnifyingglass")
+                            }
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showServicePicker = true } label: {
+                            Image(systemName: "plus")
+                        }
+                        .keyboardShortcut("n", modifiers: .command)
+                    }
+                }
+                .sheet(item: $addServiceRequest) { req in
+                    AddServiceView(serviceType: req.serviceType) { vm.addService($0) }
+                }
+                .sheet(isPresented: $showServicePicker) {
+                    ServicePickerView { type in
+                        addServiceRequest = AddServiceItem(serviceType: type)
+                    }
+                }
+                .sheet(item: $editingService) { service in
+                    AddServiceView(existing: service) { vm.updateService($0) }
+                }
+                .sheet(item: $detailService) { service in
+                    ServiceDetailView(serviceID: service.id, vm: vm)
+                }
+                .sheet(isPresented: $showOverallHealth) {
+                    OverallHealthView(vm: vm)
+                }
+                .alert(
+                    "Delete \(serviceToDelete?.name ?? "service")?",
+                    isPresented: .init(
+                        get: { serviceToDelete != nil },
+                        set: { if !$0 { serviceToDelete = nil } }
+                    )
+                ) {
+                    Button("Delete", role: .destructive) {
+                        if let svc = serviceToDelete {
+                            vm.removeService(svc)
+                        }
+                        serviceToDelete = nil
+                    }
+                    Button("Cancel", role: .cancel) { serviceToDelete = nil }
+                } message: {
+                    Text("This service and its history will be removed.")
+                }
+                .onAppear {
+                    if !hasAppeared {
+                        hasAppeared = true
+                        vm.refreshAll()
+                    }
+                    vm.startAutoRefresh()
+                }
+                .onDisappear {
+                    vm.stopAutoRefresh()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+                    vm.stopAutoRefresh()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                    guard hasAppeared else { return }
+                    vm.startAutoRefresh()
+                }
+                .onChange(of: refreshInterval) { _, _ in
+                    vm.startAutoRefresh()
+                }
+                .onChange(of: isReordering) { _, reordering in
+                    if reordering {
+                        vm.stopAutoRefresh()
+                    } else {
+                        vm.startAutoRefresh()
+                    }
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var serviceList: some View {
+        if isSearchActive {
             List {
                 if !network.canReachLocal && vm.services.contains(where: \.isLocalNetwork) {
                     networkBanner
                 }
                 if !vm.services.isEmpty {
                     overallStatusSection
-                    statusFilterPicker
                 }
                 servicesSection
             }
+            .environment(\.editMode, .constant(isReordering ? .active : .inactive))
             .listStyle(.insetGrouped)
-            .searchable(text: $vm.searchText, prompt: "Search services")
+            .searchable(text: $vm.searchText, isPresented: $isSearchActive, prompt: "Search services")
             .refreshable { vm.refreshAll() }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    HStack(spacing: 12) {
-                        refreshButton
-                        Button { showSettings = true } label: {
-                            Image(systemName: "gearshape")
-                        }
-                    }
+        } else {
+            List {
+                if !network.canReachLocal && vm.services.contains(where: \.isLocalNetwork) {
+                    networkBanner
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 12) {
-                        EditButton()
-                        Button { showServicePicker = true } label: {
-                            Image(systemName: "plus")
-                        }
-                    }
+                if !vm.services.isEmpty {
+                    overallStatusSection
                 }
+                servicesSection
             }
-            .sheet(item: $addServiceRequest) { req in
-                AddServiceView(serviceType: req.serviceType) { vm.addService($0) }
-            }
-            .sheet(isPresented: $showServicePicker) {
-                ServicePickerView { type in
-                    addServiceRequest = AddServiceItem(serviceType: type)
-                }
-            }
-            .sheet(item: $editingService) { service in
-                AddServiceView(existing: service) { vm.updateService($0) }
-            }
-            .sheet(item: $detailService) { service in
-                ServiceDetailView(serviceID: service.id, vm: vm)
-            }
-            .sheet(isPresented: $showSettings) {
-                SettingsView(vm: vm)
-            }
-            .alert(
-                "Delete \(serviceToDelete?.name ?? "service")?",
-                isPresented: .init(
-                    get: { serviceToDelete != nil },
-                    set: { if !$0 { serviceToDelete = nil } }
-                )
-            ) {
-                Button("Delete", role: .destructive) {
-                    if let svc = serviceToDelete {
-                        vm.removeService(svc)
-                    }
-                    serviceToDelete = nil
-                }
-                Button("Cancel", role: .cancel) { serviceToDelete = nil }
-            } message: {
-                Text("This service and its history will be removed.")
-            }
-            .onAppear {
-                if !hasAppeared {
-                    hasAppeared = true
-                    vm.refreshAll()
-                }
-                vm.startAutoRefresh()
-            }
-            .onDisappear {
-                vm.stopAutoRefresh()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-                vm.stopAutoRefresh()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                guard hasAppeared else { return }
-                vm.startAutoRefresh()
-            }
-            .onChange(of: refreshInterval) { _, _ in
-                vm.startAutoRefresh()
-            }
+            .environment(\.editMode, .constant(isReordering ? .active : .inactive))
+            .listStyle(.insetGrouped)
+            .refreshable { vm.refreshAll() }
+            .onChange(of: vm.searchText) { _, _ in vm.searchText = "" }
         }
-    }
-
-    // MARK: - Toolbar
-
-    private var refreshButton: some View {
-        Button { vm.refreshAll() } label: {
-            if vm.isRefreshing {
-                ProgressView().scaleEffect(0.8)
-            } else {
-                Image(systemName: "arrow.clockwise")
-            }
-        }
-        .disabled(vm.isRefreshing)
     }
 
     // MARK: - Network Banner
@@ -204,14 +219,18 @@ struct HomeView: View {
     // Delegate to a separate struct that observes LiveDataStore.
     // This way live data changes never cause HomeView body (and the List) to re-evaluate.
     private var overallStatusSection: some View {
-        OverallStatusSection(vm: vm)
+        OverallStatusSection(vm: vm, onTap: { showOverallHealth = true })
     }
 
     // MARK: - Services (grouped or flat)
 
     @ViewBuilder
     private var servicesSection: some View {
-        if vm.services.isEmpty {
+        if isReordering {
+            ReorderServicesSection(services: vm.services, isReordering: $isReordering) { ordered in
+                vm.applyReorder(ordered)
+            }
+        } else if vm.services.isEmpty {
             Section {
                 emptyState
             }
@@ -247,6 +266,7 @@ struct HomeView: View {
                     .foregroundStyle(.primary)
                 }
                 .buttonStyle(.plain)
+                .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
@@ -295,14 +315,25 @@ struct HomeView: View {
                     }
                 }
             }
-            .onMove { indices, dest in
-                let ids = list.map(\.id)
-                let sourceIDs = indices.map { ids[$0] }
-                let destID = dest < ids.count ? ids[dest] : nil
-                vm.moveServices(sourceIDs: sourceIDs, before: destID)
-            }
         } header: {
-            Text(header)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(header)
+                if !vm.services.isEmpty {
+                    HStack(spacing: 8) {
+                        filterChip(label: "All", filter: nil)
+                        filterChip(label: "Online", filter: .online)
+                        filterChip(label: "Degraded", filter: .degraded)
+                        filterChip(label: "Offline", filter: .offline)
+                        Spacer()
+                        Button("Reorder") {
+                            withAnimation { isReordering = true }
+                        }
+                        .font(.caption)
+                        .textCase(nil)
+                    }
+                }
+            }
+            .textCase(nil)
         }
     }
 
@@ -316,11 +347,20 @@ struct HomeView: View {
                 Text("No Services Yet")
                     .font(.title3.bold())
 
-                (Text("Tap ") + Text(Image(systemName: "plus")) + Text(" to add your first service."))
+                Text("Add a service to start monitoring your homelab and cloud APIs.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
+
+            Button {
+                showServicePicker = true
+            } label: {
+                Label("Add Your First Service", systemImage: "plus.circle.fill")
+                    .font(.subheadline.bold())
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 48)
@@ -333,6 +373,7 @@ struct HomeView: View {
 /// not the parent HomeView that owns the List.
 private struct OverallStatusSection: View {
     let vm: HomeViewModel
+    let onTap: () -> Void
     @ObservedObject private var live = LiveDataStore.shared
 
     private var onlineCount: Int   { vm.services.filter { (live.liveData[$0.id]?.status ?? $0.status) == .online   }.count }
@@ -350,59 +391,117 @@ private struct OverallStatusSection: View {
 
     var body: some View {
         Section {
-            HStack(spacing: 16) {
-                StatusIndicatorView(status: overallHealth, size: 50)
+            Button(action: onTap) {
+                HStack(spacing: 16) {
+                    StatusIndicatorView(status: overallHealth, size: 50)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(overallHealth.label)
-                        .font(.title3.bold())
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(overallHealth.label)
+                            .font(.title3.bold())
 
-                    HStack(spacing: 6) {
-                        Label("\(onlineCount) online", systemImage: "circle.fill")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.green)
-                            .labelStyle(CompactLabelStyle())
-                            .fixedSize()
-                        if degradedCount > 0 {
-                            Text("\u{00b7}").foregroundStyle(.tertiary).font(.caption)
-                            Label("\(degradedCount) degraded", systemImage: "circle.fill")
+                        HStack(spacing: 6) {
+                            Label("\(onlineCount) online", systemImage: "circle.fill")
                                 .font(.caption.weight(.medium))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(.green)
                                 .labelStyle(CompactLabelStyle())
                                 .fixedSize()
-                        }
-                        if offlineCount > 0 {
-                            Text("\u{00b7}").foregroundStyle(.tertiary).font(.caption)
-                            Label("\(offlineCount) offline", systemImage: "circle.fill")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.red)
-                                .labelStyle(CompactLabelStyle())
-                                .fixedSize()
+                            if degradedCount > 0 {
+                                Text("\u{00b7}").foregroundStyle(.tertiary).font(.caption)
+                                Label("\(degradedCount) degraded", systemImage: "circle.fill")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(.orange)
+                                    .labelStyle(CompactLabelStyle())
+                                    .fixedSize()
+                            }
+                            if offlineCount > 0 {
+                                Text("\u{00b7}").foregroundStyle(.tertiary).font(.caption)
+                                Label("\(offlineCount) offline", systemImage: "circle.fill")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(.red)
+                                    .labelStyle(CompactLabelStyle())
+                                    .fixedSize()
+                            }
                         }
                     }
-                }
 
-                Spacer()
+                    Spacer()
 
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("checked")
-                        .font(.caption2)
-                        .foregroundStyle(.quaternary)
-                    if let date = vm.lastRefreshed {
-                        Text(date, style: .relative)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .monospacedDigit()
-                    } else {
-                        Text("\u{2013}")
-                            .font(.caption)
-                            .foregroundStyle(.clear)
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("checked")
+                            .font(.caption2)
+                            .foregroundStyle(.quaternary)
+                        if let date = vm.lastRefreshed {
+                            Text(date, style: .relative)
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                                .monospacedDigit()
+                        } else {
+                            Text("\u{2013}")
+                                .font(.caption)
+                                .foregroundStyle(.clear)
+                        }
                     }
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                        .foregroundStyle(.tertiary)
                 }
+                .padding(.vertical, 6)
+                .foregroundStyle(.primary)
             }
-            .padding(.vertical, 6)
+            .buttonStyle(.plain)
         } header: {
             Text("Overall Health")
+        }
+    }
+}
+
+// MARK: - Reorder Section (isolated child view)
+/// Keeps the reorder buffer as local @State so onMove mutations only re-render
+/// this view, not HomeView - preventing the drag handle from flickering.
+private struct ReorderServicesSection: View {
+    @Binding var isReordering: Bool
+    let onCommit: ([Service]) -> Void
+    @State private var buffer: [Service]
+
+    init(services: [Service], isReordering: Binding<Bool>, onCommit: @escaping ([Service]) -> Void) {
+        _isReordering = isReordering
+        _buffer = State(initialValue: services)
+        self.onCommit = onCommit
+    }
+
+    var body: some View {
+        Section {
+            ForEach(buffer) { service in
+                HStack(spacing: 14) {
+                    Image(systemName: service.icon)
+                        .foregroundStyle(service.status.color)
+                        .frame(width: 28)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(service.name)
+                            .font(.body.weight(.semibold))
+                        Text(service.displayURL)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .onMove { src, dst in
+                buffer.move(fromOffsets: src, toOffset: dst)
+            }
+        } header: {
+            HStack {
+                Text("Services")
+                Spacer()
+                Button("Done") {
+                    onCommit(buffer)
+                    isReordering = false
+                }
+                .font(.caption)
+                .textCase(nil)
+            }
         }
     }
 }

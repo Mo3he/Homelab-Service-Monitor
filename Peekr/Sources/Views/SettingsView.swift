@@ -3,8 +3,9 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @ObservedObject var vm: HomeViewModel
+    @ObservedObject private var net = NetworkMonitor.shared
     @AppStorage("autoRefreshInterval") private var interval: Double = 30
-    @AppStorage("useLightIcon") private var useLightIcon: Bool = false
+    @AppStorage("bgRefreshInterval") private var bgInterval: Double = 900
     @Environment(\.dismiss) private var dismiss
     @State private var showImporter = false
     @State private var importResultMessage: String?
@@ -19,23 +20,17 @@ struct SettingsView: View {
         ("Manual only", 0),
     ]
 
+    private let bgIntervalOptions: [(label: String, seconds: Double)] = [
+        ("15 minutes", 900),
+        ("30 minutes", 1800),
+        ("1 hour",     3600),
+        ("2 hours",    7200),
+        ("Disabled",   0),
+    ]
+
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    Picker("Auto-refresh", selection: $interval) {
-                        ForEach(intervalOptions, id: \.seconds) { opt in
-                            Text(opt.label).tag(opt.seconds)
-                        }
-                    }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
-                } header: {
-                    Text("Auto-Refresh Interval")
-                } footer: {
-                    Text("Services are checked one at a time in sequence. Use the refresh button to check all at once immediately.")
-                }
-
                 networkInfoSection
 
                 Section("Notifications") {
@@ -47,18 +42,34 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Toggle(isOn: $useLightIcon) {
-                        Label("Light Mode Icon", systemImage: "sun.max")
+                    Picker("Auto-refresh", selection: $interval) {
+                        ForEach(intervalOptions, id: \.seconds) { opt in
+                            Text(opt.label).tag(opt.seconds)
+                        }
                     }
-                    .onChange(of: useLightIcon) { _, newVal in
-                        let iconName: String? = newVal ? "AppIconLight" : nil
-                        UIApplication.shared.setAlternateIconName(iconName)
-                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
                 } header: {
-                    Text("Appearance")
+                    Text("Auto-Refresh Interval")
                 } footer: {
-                    Text("Switches between the dark and light version of the app icon.")
+                    Text("Services are checked one at a time in sequence. Pull down on the home screen to refresh all immediately.")
                 }
+
+                Section {
+                    Picker("Background Refresh", selection: $bgInterval) {
+                        ForEach(bgIntervalOptions, id: \.seconds) { opt in
+                            Text(opt.label).tag(opt.seconds)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } header: {
+                    Text("Background Refresh Interval")
+                } footer: {
+                    Text("How often Peekr checks your services while in the background. iOS may delay or skip refreshes to preserve battery.")
+                }
+
+
 
                 Section("Data") {
                     if let data = vm.exportJSON() {
@@ -87,14 +98,6 @@ struct SettingsView: View {
                     }
                 }
 
-                if let msg = importResultMessage {
-                    Section {
-                        Text(msg)
-                            .foregroundStyle(.secondary)
-                            .font(.subheadline)
-                    }
-                }
-
                 Section("About") {
                     LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
                     Link(destination: URL(string: "https://www.buymeacoffee.com/mo3he")!) {
@@ -110,11 +113,6 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
             .sheet(isPresented: $showNotificationSchedules) {
                 NotificationSchedulesView(vm: vm)
             }
@@ -137,6 +135,13 @@ struct SettingsView: View {
                     importResultMessage = "Import failed: \(error.localizedDescription)"
                 }
             }
+            .alert("Import",
+                   isPresented: Binding(get: { importResultMessage != nil },
+                                        set: { if !$0 { importResultMessage = nil } })) {
+                Button("OK", role: .cancel) { importResultMessage = nil }
+            } message: {
+                Text(importResultMessage ?? "")
+            }
         }
     }
 
@@ -145,7 +150,6 @@ struct SettingsView: View {
     private var networkInfoSection: some View {
         Section {
             HStack {
-                let net = NetworkMonitor.shared
                 if net.isOnWiFi {
                     Label("WiFi", systemImage: "wifi")
                 } else if net.likelyVPN {

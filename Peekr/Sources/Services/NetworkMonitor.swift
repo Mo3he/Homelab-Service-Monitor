@@ -36,6 +36,7 @@ final class NetworkMonitor: ObservableObject {
 
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "peekr.networkMonitor")
+    private let probeQueue = DispatchQueue(label: "peekr.probe")
 
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in
@@ -47,7 +48,7 @@ final class NetworkMonitor: ObservableObject {
                 self.likelyVPN = path.usesInterfaceType(.other)
 
                 // Network changed - reset probe result and user override
-                if self.isOnWiFi != wasOnWiFi || !wasOnWiFi {
+                if self.isOnWiFi != wasOnWiFi {
                     self.isHomeNetwork = nil
                     self.userOverride = false
                 }
@@ -107,14 +108,14 @@ final class NetworkMonitor: ObservableObject {
 
     /// Fast TCP connect with a 2-second timeout. Returns true if the port is open.
     private func quickTCPProbe(host: String, port: UInt16) async -> Bool {
-        await withCheckedContinuation { continuation in
+        let queue = self.probeQueue
+        return await withCheckedContinuation { continuation in
             let connection = NWConnection(
                 host: NWEndpoint.Host(host),
                 port: NWEndpoint.Port(rawValue: port)!,
                 using: .tcp
             )
             var resumed = false
-            let probeQueue = DispatchQueue(label: "peekr.probe")
 
             connection.stateUpdateHandler = { state in
                 guard !resumed else { return }
@@ -131,10 +132,9 @@ final class NetworkMonitor: ObservableObject {
                 }
             }
 
-            connection.start(queue: probeQueue)
+            connection.start(queue: queue)
 
-            // 2-second timeout
-            probeQueue.asyncAfter(deadline: .now() + 2) {
+            queue.asyncAfter(deadline: .now() + 2) {
                 guard !resumed else { return }
                 resumed = true
                 connection.cancel()

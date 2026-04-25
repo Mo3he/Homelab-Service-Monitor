@@ -46,19 +46,8 @@ struct ServiceDetailView: View {
                         }
                     }
                     ToolbarItemGroup(placement: .topBarTrailing) {
-                        Button {
-                            Task { await vm.checkAndFetch(service) }
-                        } label: {
-                            if live.checkingIDs.contains(serviceID) {
-                                ProgressView().scaleEffect(0.8)
-                            } else {
-                                Image(systemName: "arrow.clockwise")
-                            }
-                        }
-                        Button {
+                        Button("Edit") {
                             editingService = service
-                        } label: {
-                            Image(systemName: "pencil")
                         }
                         Button("Close") { dismiss() }
                     }

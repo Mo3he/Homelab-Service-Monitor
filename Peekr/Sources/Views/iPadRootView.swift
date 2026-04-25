@@ -2,8 +2,8 @@ import SwiftUI
 
 /// iPad root: sidebar of services + persistent detail panel + event log in a third column.
 struct iPadRootView: View {
-    @StateObject private var vm = HomeViewModel()
-    @StateObject private var network = NetworkMonitor.shared
+    @EnvironmentObject private var vm: HomeViewModel
+    @ObservedObject private var network = NetworkMonitor.shared
     @State private var selectedServiceID: UUID? = nil
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var showSettings = false
@@ -90,15 +90,18 @@ struct iPadRootView: View {
                         else { Image(systemName: "arrow.clockwise") }
                     }
                     .disabled(vm.isRefreshing)
+                    .keyboardShortcut("r", modifiers: .command)
                     Button { showSettings = true } label: {
                         Image(systemName: "gearshape")
                     }
+                    .keyboardShortcut(",", modifiers: .command)
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showServicePicker = true } label: {
                     Image(systemName: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
             }
         }
     }

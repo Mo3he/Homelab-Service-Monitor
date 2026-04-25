@@ -43,6 +43,10 @@ struct PeekrApp: App {
     private let bgTaskID = "com.mblieden.peekr.refresh"
     private let notifDelegate = NotificationResponseHandler()
 
+    /// One HomeViewModel for the whole app. Injected into every Scene so iPhone, iPad,
+    /// and the Mac menu bar all read/write the same in-memory state and event log.
+    @StateObject private var vm = HomeViewModel()
+
     init() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: bgTaskID, using: nil) { task in
             guard let refreshTask = task as? BGAppRefreshTask else { return }
@@ -56,6 +60,7 @@ struct PeekrApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(vm)
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
                     scheduleBackgroundRefresh()
                 }
@@ -67,14 +72,19 @@ struct PeekrApp: App {
                 }
         }
 
-        #if targetEnvironment(macCatalyst)
+        // MenuBarExtra is macOS-only (NOT available on Mac Catalyst, despite the README's
+        // historical claim). Gate it behind a true macOS target so the Catalyst build
+        // compiles. If a native macOS target is added later, the menu bar lights up
+        // automatically — no further changes needed here.
+        #if os(macOS) && !targetEnvironment(macCatalyst)
         MenuBarExtra("Peekr", systemImage: menuBarIcon) {
             MenuBarStatusView()
+                .environmentObject(vm)
         }
         #endif
     }
 
-    #if targetEnvironment(macCatalyst)
+    #if os(macOS) && !targetEnvironment(macCatalyst)
     private var menuBarIcon: String {
         let store = ServiceStore.shared
         if store.services.contains(where: { $0.status == .offline })   { return "exclamationmark.circle.fill" }
@@ -85,60 +95,27 @@ struct PeekrApp: App {
     #endif
 
     private func scheduleBackgroundRefresh() {
+        let interval = UserDefaults.standard.double(forKey: "bgRefreshInterval")
+        let seconds = interval > 0 ? interval : 900  // default 15 min; 0 = disabled
+        guard interval != 0 else { return }
         let request = BGAppRefreshTaskRequest(identifier: bgTaskID)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: seconds)
         try? BGTaskScheduler.shared.submit(request)
     }
 
     private static func handleBackgroundRefresh(task: BGAppRefreshTask) {
-        let store = ServiceStore.shared
-        let pingService = PingService.shared
-
-        let checkTask = Task {
-            // Read last known statuses before checking
-            let services = await MainActor.run { store.services }
-
-            for service in services {
-                guard !Task.isCancelled else { break }
-                let previousStatus = service.status
-
-                do {
-                    let result = try await pingService.check(service)
-                    let newStatus: ServiceStatus
-                    if let code = result.httpStatusCode {
-                        newStatus = (200..<400).contains(code) || code == 401 || code == 403 ? .online : .degraded
-                    } else {
-                        newStatus = .online
-                    }
-                    await MainActor.run {
-                        var updated = service
-                        updated.status         = newStatus
-                        updated.latencyMs      = result.latencyMs
-                        updated.httpStatusCode = result.httpStatusCode
-                        updated.lastChecked    = .now
-                        store.update(updated)
-                    }
-                } catch {
-                    // Service went offline - notify if it was previously up and notifications are enabled
-                    if (previousStatus == .online || previousStatus == .degraded) && service.notificationsEnabled {
-                        await NotificationService.postOfflineAlert(for: service)
-                    }
-                    await MainActor.run {
-                        var updated = service
-                        updated.status      = .offline
-                        updated.latencyMs   = nil
-                        updated.lastChecked = .now
-                        store.update(updated)
-                    }
-                }
-            }
+        // Single Task owns the work. Set expirationHandler before any await to ensure
+        // the system can cancel cleanly even if the runtime expires the task immediately.
+        let work = Task<Bool, Never> {
+            await BackgroundRefreshCoordinator.refreshAll()
+            return !Task.isCancelled
         }
 
-        task.expirationHandler = { checkTask.cancel() }
+        task.expirationHandler = { work.cancel() }
 
         Task {
-            _ = await checkTask.value
-            task.setTaskCompleted(success: true)
+            let success = await work.value
+            task.setTaskCompleted(success: success)
         }
     }
 }

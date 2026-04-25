@@ -38,20 +38,28 @@ final class HomeViewModel: ObservableObject {
     private let eventsKey = "peekr.statusEvents"
 
     private let metricOrderKey = "peekr.metricOrder"
+    private var metricOrderCache: [String: [String]] = [:]
     private var metricOrder: [String: [String]] {
-        get {
-            guard let data = UserDefaults.standard.data(forKey: metricOrderKey),
-                  let dict = try? JSONDecoder().decode([String: [String]].self, from: data)
-            else { return [:] }
-            return dict
-        }
+        get { metricOrderCache }
         set {
+            metricOrderCache = newValue
             guard let data = try? JSONEncoder().encode(newValue) else { return }
             UserDefaults.standard.set(data, forKey: metricOrderKey)
         }
     }
 
     init() {
+        // Load metric ordering / hidden labels into in-memory caches once at init,
+        // so the computed-property accessors don't decode JSON on every read.
+        if let data = UserDefaults.standard.data(forKey: metricOrderKey),
+           let dict = try? JSONDecoder().decode([String: [String]].self, from: data) {
+            metricOrderCache = dict
+        }
+        if let data = UserDefaults.standard.data(forKey: hiddenMetricsKey),
+           let dict = try? JSONDecoder().decode([String: [String]].self, from: data) {
+            hiddenMetricsCache = dict
+        }
+
         store.$services
             .assign(to: \.services, on: self)
             .store(in: &cancellables)
@@ -59,8 +67,7 @@ final class HomeViewModel: ObservableObject {
         // before the first check completes.
         live.seed(from: store.services)
         // Seed hidden metric labels so ServiceRowView filters correctly from launch.
-        let stored = hiddenMetricsStore
-        for (keyStr, labels) in stored {
+        for (keyStr, labels) in hiddenMetricsCache {
             if let id = UUID(uuidString: keyStr) {
                 live.hiddenMetricLabels[id] = Set(labels)
             }
@@ -73,13 +80,7 @@ final class HomeViewModel: ObservableObject {
     var filteredServices: [Service] {
         var list = services
         if let filter = statusFilter {
-            let filtered = list.filter { $0.status == filter }
-            // Auto-clear stale filter: if it matches nothing and services have loaded, drop it
-            if filtered.isEmpty && !services.isEmpty && !isRefreshing {
-                Task { @MainActor in statusFilter = nil }
-                return list
-            }
-            list = filtered
+            list = list.filter { effectiveStatus(for: $0) == filter }
         }
         if !searchText.isEmpty {
             let q = searchText.lowercased()
@@ -155,9 +156,15 @@ final class HomeViewModel: ObservableObject {
                 let result = try await PingService.shared.check(service)
                 updated.latencyMs      = result.latencyMs
                 updated.httpStatusCode = result.httpStatusCode
-                updated.status = result.httpStatusCode.map {
+                let baseStatus: ServiceStatus = result.httpStatusCode.map {
                     (200..<400).contains($0) || $0 == 401 || $0 == 403 ? .online : .degraded
                 } ?? .online
+                if baseStatus == .online,
+                   let threshold = service.latencyDegradedMs, result.latencyMs > threshold {
+                    updated.status = .degraded
+                } else {
+                    updated.status = baseStatus
+                }
             } catch {
                 updated.status         = .offline
                 updated.latencyMs      = nil
@@ -196,11 +203,24 @@ final class HomeViewModel: ObservableObject {
                 updated.status = fetched.isEmpty ? .degraded : .online
                 live.liveData[updated.id]?.status = updated.status
             }
-        } catch let error as IntegrationError where error == .authFailed {
-            live.setMetrics([], for: updated.id)
-            live.setError("Authentication failed. Check your credentials in Edit.", for: updated.id)
-            if service.serviceType.isCloudService {
-                live.liveData[updated.id]?.status = .degraded
+        } catch let error as IntegrationError {
+            switch error {
+            case .authFailed:
+                live.setMetrics([], for: updated.id)
+                live.setError("Authentication failed. Check your credentials in Edit.", for: updated.id)
+                if service.serviceType.isCloudService {
+                    live.liveData[updated.id]?.status = .degraded
+                }
+            case .transient:
+                // Preserve last-good metrics; just surface the error message so the user
+                // knows the row is being throttled/backed off, not stale.
+                live.setError(error.localizedDescription, for: updated.id)
+            case .serviceError, .unexpectedFormat, .badURL:
+                live.setMetrics([], for: updated.id)
+                live.setError(error.localizedDescription, for: updated.id)
+                if service.serviceType.isCloudService {
+                    live.liveData[updated.id]?.status = .degraded
+                }
             }
         } catch {
             live.setMetrics([], for: updated.id)
@@ -258,6 +278,10 @@ final class HomeViewModel: ObservableObject {
 
     func moveServices(from source: IndexSet, to destination: Int) {
         store.move(from: source, to: destination)
+    }
+
+    func applyReorder(_ ordered: [Service]) {
+        store.reorder(to: ordered)
     }
 
     /// Used by grouped sections: move a set of service IDs to just before `beforeID` (or end).
@@ -369,14 +393,11 @@ final class HomeViewModel: ObservableObject {
     // MARK: - Metric visibility
 
     private let hiddenMetricsKey = "peekr.hiddenMetrics"
+    private var hiddenMetricsCache: [String: [String]] = [:]
     private var hiddenMetricsStore: [String: [String]] {
-        get {
-            guard let data = UserDefaults.standard.data(forKey: hiddenMetricsKey),
-                  let dict = try? JSONDecoder().decode([String: [String]].self, from: data)
-            else { return [:] }
-            return dict
-        }
+        get { hiddenMetricsCache }
         set {
+            hiddenMetricsCache = newValue
             guard let data = try? JSONEncoder().encode(newValue) else { return }
             UserDefaults.standard.set(data, forKey: hiddenMetricsKey)
         }
@@ -498,11 +519,22 @@ final class HomeViewModel: ObservableObject {
                     newErrors.removeValue(forKey: service.id)
                     var tmp = service; tmp.status = liveEntry.status
                     recordTransition(previousStatus: previousStatus, service: tmp)
-                } catch let e as IntegrationError where e == .authFailed {
-                    liveEntry.status = .degraded
-                    newLiveData[service.id] = liveEntry
-                    newMetrics[service.id]  = []
-                    newErrors[service.id]   = "Authentication failed. Check your credentials in Edit."
+                } catch let e as IntegrationError {
+                    switch e {
+                    case .authFailed:
+                        liveEntry.status = .degraded
+                        newLiveData[service.id] = liveEntry
+                        newMetrics[service.id]  = []
+                        newErrors[service.id]   = "Authentication failed. Check your credentials in Edit."
+                    case .transient:
+                        // Keep the previous status + metrics; just surface a backoff note.
+                        newErrors[service.id] = e.localizedDescription
+                    case .serviceError, .unexpectedFormat, .badURL:
+                        liveEntry.status = .degraded
+                        newLiveData[service.id] = liveEntry
+                        newMetrics[service.id]  = []
+                        newErrors[service.id]   = e.localizedDescription
+                    }
                 } catch {
                     liveEntry.status = .degraded
                     newLiveData[service.id] = liveEntry
@@ -516,9 +548,15 @@ final class HomeViewModel: ObservableObject {
                 let result  = try await PingService.shared.check(service)
                 liveEntry.latencyMs      = result.latencyMs
                 liveEntry.httpStatusCode = result.httpStatusCode
-                liveEntry.status = result.httpStatusCode.map {
+                let baseStatus: ServiceStatus = result.httpStatusCode.map {
                     (200..<400).contains($0) || $0 == 401 || $0 == 403 ? .online : .degraded
                 } ?? .online
+                if baseStatus == .online,
+                   let threshold = service.latencyDegradedMs, result.latencyMs > threshold {
+                    liveEntry.status = .degraded
+                } else {
+                    liveEntry.status = baseStatus
+                }
             } catch {
                 liveEntry.status = .offline
                 newLiveData[service.id] = liveEntry
@@ -543,9 +581,18 @@ final class HomeViewModel: ObservableObject {
                 fetched = applyMetricOrder(fetched, serviceID: service.id)
                 newMetrics[service.id] = fetched
                 newErrors.removeValue(forKey: service.id)
-            } catch let e as IntegrationError where e == .authFailed {
-                newMetrics[service.id] = []
-                newErrors[service.id]  = "Authentication failed. Check your credentials in Edit."
+            } catch let e as IntegrationError {
+                switch e {
+                case .authFailed:
+                    newMetrics[service.id] = []
+                    newErrors[service.id]  = "Authentication failed. Check your credentials in Edit."
+                case .transient:
+                    // Preserve last-good metrics on transient failures.
+                    newErrors[service.id] = e.localizedDescription
+                case .serviceError, .unexpectedFormat, .badURL:
+                    newMetrics[service.id] = []
+                    newErrors[service.id]  = e.localizedDescription
+                }
             } catch {
                 newMetrics[service.id] = []
                 newErrors[service.id]  = error.localizedDescription

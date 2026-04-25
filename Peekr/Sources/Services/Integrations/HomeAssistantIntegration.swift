@@ -9,9 +9,13 @@ struct HomeAssistantIntegration: ServiceIntegration {
 
         let headers = ["Authorization": "Bearer \(token)", "Content-Type": "application/json"]
 
+        guard let configURL = URL(string: "\(base)/api/config"),
+              let statesURL = URL(string: "\(base)/api/states") else {
+            throw IntegrationError.badURL
+        }
         // Fetch config (version) and states in parallel
-        async let configResult  = fetchJSON(url: URL(string: "\(base)/api/config")!, headers: headers)
-        async let statesResult  = fetchJSON(url: URL(string: "\(base)/api/states")!, headers: headers)
+        async let configResult  = fetchJSON(url: configURL, headers: headers)
+        async let statesResult  = fetchJSON(url: statesURL, headers: headers)
 
         var metrics: [ServiceMetric] = []
 

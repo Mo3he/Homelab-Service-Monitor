@@ -37,14 +37,11 @@ struct FrigateIntegration: ServiceIntegration {
         }
 
         // Events today: Frigate doesn't expose a direct count, but /api/events returns a list we can count
-        if let events = try? await eventsResult as? [[String: Any]] {
-            // Fetch the full list without limit to get today's events
+        if (try? await eventsResult as? [[String: Any]]) != nil {
             let todayStart = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970
             async let allEventsResult = fetchJSON(url: URL(string: "\(base)/api/events?after=\(Int(todayStart))")!, headers: [:])
             if let allEvents = try? await allEventsResult as? [[String: Any]] {
                 metrics.append(ServiceMetric(label: "Events today", value: "\(allEvents.count)", icon: "calendar.badge.clock", color: .secondary))
-            } else {
-                _ = events // no-op, just suppress warning
             }
         }
 

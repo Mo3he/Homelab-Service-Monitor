@@ -29,7 +29,6 @@ struct ServiceRowView: View {
                             MetricChip(metric: metric)
                         }
                     }
-                    .padding(.leading, 58)
                 }
                 .frame(height: 26)
             }
@@ -99,6 +98,81 @@ struct ServiceRowView: View {
                     .foregroundStyle(.tertiary)
             }
         }
+    }
+
+    private func latencyColor(_ ms: Double) -> Color {
+        switch ms {
+        case ..<100: return .green
+        case ..<300: return .orange
+        default:     return .red
+        }
+    }
+}
+
+// MARK: - Metric Chip
+
+/// Static version of ServiceRowView with zero observers - safe to use in reorder mode.
+/// Reads directly from `service` so LiveDataStore publishing never invalidates it.
+struct ReorderRowView: View {
+    let service: Service
+
+    private var status: ServiceStatus { service.status }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 14) {
+                // Icon
+                ZStack(alignment: .bottomTrailing) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(status == .unknown
+                                  ? Color(.systemFill)
+                                  : status.color.opacity(0.15))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: service.icon)
+                            .foregroundStyle(status == .unknown ? .secondary : status.color)
+                            .font(.system(size: 18, weight: .medium))
+                    }
+                    if status != .unknown {
+                        Circle()
+                            .fill(status.color)
+                            .frame(width: 11, height: 11)
+                            .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+                            .offset(x: 3, y: 3)
+                    }
+                }
+                // Info
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(service.name)
+                        .font(.body.weight(.semibold))
+                        .lineLimit(1)
+                    if let code = service.httpStatusCode {
+                        Text("HTTP \(code) · \(service.host)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    } else {
+                        Text(service.displayURL)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 8)
+                // Latency
+                if let latency = service.latencyMs {
+                    Text(String(format: "%.0f ms", latency))
+                        .font(.caption.monospacedDigit().bold())
+                        .foregroundStyle(latencyColor(latency))
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
     }
 
     private func latencyColor(_ ms: Double) -> Color {

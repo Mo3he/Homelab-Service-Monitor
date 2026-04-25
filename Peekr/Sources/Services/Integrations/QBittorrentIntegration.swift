@@ -19,8 +19,9 @@ struct QBittorrentIntegration: ServiceIntegration {
             cookie = sid
         }
 
-        var headers: [String: String] = [:]
-        if let c = cookie { headers["Cookie"] = "SID=\(c)" }
+        // Build headers as a `let` so the `async let` fetches don't capture a `var`
+        // (which Swift 6 mode rejects as a data race).
+        let headers: [String: String] = cookie.map { ["Cookie": "SID=\($0)"] } ?? [:]
 
         guard let transferURL = URL(string: "\(base)/api/v2/transfer/info"),
               let torrentsURL = URL(string: "\(base)/api/v2/torrents/info"),

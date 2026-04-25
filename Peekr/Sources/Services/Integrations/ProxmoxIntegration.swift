@@ -14,8 +14,12 @@ struct ProxmoxIntegration: ServiceIntegration {
         authReq.httpMethod = "POST"
         authReq.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         authReq.timeoutInterval = 8
-        let body = "username=\(username)&password=\(password)"
-        authReq.httpBody = body.data(using: .utf8)
+        var bodyComponents = URLComponents()
+        bodyComponents.queryItems = [
+            URLQueryItem(name: "username", value: username),
+            URLQueryItem(name: "password", value: password)
+        ]
+        authReq.httpBody = bodyComponents.percentEncodedQuery?.data(using: .utf8)
         let (authData, authResp) = try await URLSession.shared.data(for: authReq)
         if let http = authResp as? HTTPURLResponse, http.statusCode == 401 { throw IntegrationError.authFailed }
 
