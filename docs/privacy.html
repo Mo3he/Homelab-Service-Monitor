@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Peekr – Privacy Policy</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 720px;
+      margin: 48px auto;
+      padding: 0 24px;
+      color: #1c1c1e;
+      line-height: 1.7;
+    }
+    h1 { font-size: 2rem; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.1rem; margin-top: 2rem; color: #1c1c1e; }
+    p, li { color: #3a3a3c; }
+    ul { padding-left: 1.4rem; }
+    a { color: #0071e3; }
+    .updated { color: #8e8e93; font-size: 0.9rem; margin-top: 0; }
+  </style>
+</head>
+<body>
+
+  <h1>Peekr Privacy Policy</h1>
+  <p class="updated">Last updated: April 25, 2026</p>
+
+  <p>Peekr is a service monitoring app for your self-hosted homelab services and cloud API accounts.
+  This policy explains what data the app uses, where it stays, and what it never does.</p>
+
+  <h2>What Peekr does not do</h2>
+  <ul>
+    <li>Peekr does not collect, transmit, or sell any personal data.</li>
+    <li>Peekr does not include analytics, crash-reporting SDKs, or advertising frameworks.</li>
+    <li>Peekr does not create or require a user account.</li>
+    <li>Peekr does not track you across apps or websites.</li>
+  </ul>
+
+  <h2>What data the app stores, and where</h2>
+  <p>Everything Peekr stores stays on your device:</p>
+  <ul>
+    <li><strong>Service configuration</strong> (hostnames, ports, service types, display names) is saved
+    to <code>UserDefaults</code> on your device.</li>
+    <li><strong>Credentials</strong> (API keys, usernames, passwords) are stored exclusively in the
+    iOS/macOS Keychain and are never written to iCloud or transmitted anywhere.</li>
+    <li><strong>Status history and metric history</strong> are kept in <code>UserDefaults</code> on
+    your device and are never backed up to any server.</li>
+    <li><strong>Notification schedules and alert rules</strong> are stored on-device only.</li>
+  </ul>
+
+  <h2>Network access</h2>
+  <p>Peekr makes outbound HTTP/HTTPS/TCP connections exclusively to the service addresses
+  <em>you</em> enter. These are connections from your device directly to your own infrastructure
+  or the cloud APIs you configure (such as GitHub or Anthropic). No traffic is routed through
+  any Peekr server because no Peekr server exists.</p>
+
+  <h2>Self-signed certificates</h2>
+  <p>For services running on your local network with self-signed TLS certificates, Peekr provides
+  an opt-in "Allow self-signed certificate" toggle per service. This is disabled by default and
+  only bypasses TLS validation for the specific host you enable it on. It has no effect on any
+  other connection.</p>
+
+  <h2>Background refresh</h2>
+  <p>Peekr can check your services in the background using iOS Background App Refresh. These
+  checks connect only to the service addresses you have configured and produce local notifications
+  on your device. No data leaves your device as a result of background refresh.</p>
+
+  <h2>Notifications</h2>
+  <p>Peekr sends local notifications only (generated on your device). There is no push notification
+  server. Notifications require your explicit permission and can be disabled in iOS Settings at
+  any time.</p>
+
+  <h2>Children</h2>
+  <p>Peekr does not knowingly collect any information from anyone, including children under 13.</p>
+
+  <h2>Changes to this policy</h2>
+  <p>If this policy changes, the updated version will be posted at this URL with a revised date.
+  Because Peekr collects no data, changes are expected to be minor and administrative in nature.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about this policy can be sent to
+  <a href="mailto:moshe@mohome.net">moshe@mohome.net</a>.</p>
+
+</body>
+</html>

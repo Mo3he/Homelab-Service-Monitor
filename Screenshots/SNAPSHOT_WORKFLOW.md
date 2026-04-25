@@ -83,7 +83,35 @@ sips -s format jpeg -s formatOptions 90 \
   --out Screenshots/01-Home-ServicesList.jpeg
 ```
 
-## Other device sizes (TODO)
+## Mac (Catalyst) capture
+
+No `simctl` on Mac. Launch the built `.app` directly, capture the window via `screencapture -l <windowID> -o` (no shadow), then pad to 2880×1800 with `sips --padToHeightWidth`.
+
+```sh
+APP="$(find ~/Library/Developer/Xcode/DerivedData/Peekr-* -name Peekr.app -path '*Debug-maccatalyst*' -not -path '*Index.noindex*' | head -1)"
+OUT=/path/to/Screenshots/sim-mac
+mkdir -p "$OUT"
+
+get_win_id() {
+  swift -e '
+import CoreGraphics
+let wins = CGWindowListCopyWindowInfo([.optionOnScreenOnly,.excludeDesktopElements], kCGNullWindowID) as! [[String:Any]]
+for w in wins { if let o = w["kCGWindowOwnerName"] as? String, o.contains("Peekr") { print(w["kCGWindowNumber"]!); break } }
+' 2>/dev/null
+}
+
+pkill -f "MacOS/Peekr" 2>/dev/null; sleep 1
+open "$APP" --args -peekr.demoScreen home
+sleep 4
+WID=$(get_win_id)
+screencapture -l "$WID" -o "$OUT/raw.png"
+sips --padToHeightWidth 1800 2880 --padColor F2F2F7 "$OUT/raw.png" --out "$OUT/mac-01-home.png"
+rm "$OUT/raw.png"
+```
+
+Repeat for each screen using the same screen names as the iPhone loop. Window padding color `F2F2F7` matches the Mac Catalyst grouped background.
+
+
 
 App Store Connect requires screenshots for **each device class** the app declares.
 Peekr supports iPhone, iPad, and Mac (Catalyst).
@@ -95,8 +123,8 @@ back to `false` before committing.
 | Device class           | Simulator              | Required dims | Folder                  |
 |------------------------|------------------------|---------------|-------------------------|
 | iPhone 6.9" ✅ done    | iPhone 17 Pro Max      | 1320 × 2868   | `sim/` (current)        |
-| iPad 13"               | iPad Pro 13" (M4)      | 2064 × 2752   | `sim-ipad/` (TODO)      |
-| Mac (Catalyst)         | n/a — capture from app | 2880 × 1800   | `sim-mac/` (TODO)       |
+| iPad 13" ✅ done       | iPad Pro 13" (M5)      | 2064 × 2752   | `sim-ipad/`             |
+| Mac (Catalyst) ✅ done | n/a — capture from app | 2880 × 1800   | `sim-mac/`              |
 
 For iPad, change the booted device and adjust the `UDID` line; everything else
 works as-is. Mac Catalyst can't be driven by `simctl` — launch the app on the Mac
