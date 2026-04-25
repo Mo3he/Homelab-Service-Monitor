@@ -58,6 +58,13 @@ final class HomeViewModel: ObservableObject {
         // Seed live display state from persisted service data so the UI shows last-known values
         // before the first check completes.
         live.seed(from: store.services)
+        // Seed hidden metric labels so ServiceRowView filters correctly from launch.
+        let stored = hiddenMetricsStore
+        for (keyStr, labels) in stored {
+            if let id = UUID(uuidString: keyStr) {
+                live.hiddenMetricLabels[id] = Set(labels)
+            }
+        }
         loadEvents()
     }
 
@@ -394,7 +401,8 @@ final class HomeViewModel: ObservableObject {
         if isHidden { set.insert(label) } else { set.remove(label) }
         hm[key] = Array(set)
         hiddenMetricsStore = hm
-        live.objectWillChange.send()
+        // Sync to LiveDataStore so ServiceRowView picks it up immediately
+        live.hiddenMetricLabels[serviceID] = set
     }
 
     // MARK: - Export / Import

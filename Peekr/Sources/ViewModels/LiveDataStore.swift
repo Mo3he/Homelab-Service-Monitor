@@ -15,6 +15,8 @@ final class LiveDataStore: ObservableObject {
     @Published var metrics: [UUID: [ServiceMetric]] = [:]
     @Published var metricsError: [UUID: String] = [:]
     @Published private(set) var checkingIDs: Set<UUID> = []
+    /// Hidden metric labels per service - kept here so ServiceRowView can filter without vm.
+    @Published var hiddenMetricLabels: [UUID: Set<String>] = [:]
 
     private init() {}
 
@@ -61,7 +63,14 @@ final class LiveDataStore: ObservableObject {
         liveData.removeValue(forKey: id)
         metrics.removeValue(forKey: id)
         metricsError.removeValue(forKey: id)
+        hiddenMetricLabels.removeValue(forKey: id)
         checkingIDs.remove(id)
+    }
+
+    func visibleMetrics(for id: UUID) -> [ServiceMetric] {
+        let all = metrics[id] ?? []
+        let hidden = hiddenMetricLabels[id] ?? []
+        return hidden.isEmpty ? all : all.filter { !hidden.contains($0.label) }
     }
 
     func seed(from services: [Service]) {

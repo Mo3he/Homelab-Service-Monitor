@@ -5,7 +5,7 @@ struct ServiceRowView: View {
     @ObservedObject private var live = LiveDataStore.shared
 
     private var liveEntry: ServiceLiveData? { live.liveData[service.id] }
-    private var metrics: [ServiceMetric] { live.metrics[service.id] ?? [] }
+    private var metrics: [ServiceMetric] { live.visibleMetrics(for: service.id) }
     private var effectiveStatus: ServiceStatus { live.effectiveStatus(for: service) }
 
     private var displayLatency: Double?     { liveEntry?.latencyMs      ?? service.latencyMs }
@@ -25,19 +25,8 @@ struct ServiceRowView: View {
             if service.serviceType != .generic {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
-                        let visible = Array(metrics.prefix(4))
-                        let overflow = metrics.count - visible.count
-                        ForEach(visible) { metric in
+                        ForEach(metrics) { metric in
                             MetricChip(metric: metric)
-                        }
-                        if overflow > 0 {
-                            Text("+\(overflow)")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color(.tertiarySystemFill))
-                                .clipShape(Capsule())
                         }
                     }
                     .padding(.leading, 58)
