@@ -158,26 +158,33 @@ struct UGreenNASIntegration: ServiceIntegration {
         var loginReq = URLRequest(url: URL(string: "\(base)/ugreen/v1/verify/login")!)
         loginReq.httpMethod = "POST"
         loginReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        loginReq.httpBody = try JSONSerialization.data(withJSONObject: [
+        let trustKey = "ugnas-trust-\(service.id.uuidString)"
+        let storedTrust = KeychainHelper.load(account: trustKey)
+        var loginBody: [String: Any] = [
             "username": username, "password": encodedPw,
             "keepalive": false, "otp": true, "is_simple": false
-        ])
+        ]
+        if let trust = storedTrust, !trust.isEmpty {
+            loginBody["trust_token"] = trust
+            loginBody["trust_info"] = ["client_type": "web", "system": "iOS", "dev_name": "Peekr"]
+        }
+        loginReq.httpBody = try JSONSerialization.data(withJSONObject: loginBody)
         let (loginData, _) = try await IntegrationHTTP.session.data(for: loginReq)
         guard let loginJSON = try JSONSerialization.jsonObject(with: loginData) as? [String: Any],
-              let loginBody = loginJSON["data"] as? [String: Any] else {
+              let loginBodyResp = loginJSON["data"] as? [String: Any] else {
             throw UGreenAuthError.loginFailed
         }
 
-        // If 2FA is disabled, login gives us the token directly
-        if let token = loginBody["token"] as? String, !token.isEmpty {
+        // If 2FA is disabled or trust token was accepted, login gives us the token directly
+        if let token = loginBodyResp["token"] as? String, !token.isEmpty {
             return token
         }
 
-        guard let tokenId = loginBody["token_id"] as? String else {
+        guard let tokenId = loginBodyResp["token_id"] as? String else {
             throw UGreenAuthError.loginFailed
         }
 
-        // Step 3: TOTP 2FA
+        // Step 3: TOTP 2FA - request trust so future logins skip OTP
         let totpSecret = service.apiKey ?? ""
         guard !totpSecret.isEmpty else { throw UGreenAuthError.totpSecretMissing }
         let totpCode = generateTOTP(secret: totpSecret)
@@ -188,7 +195,7 @@ struct UGreenNASIntegration: ServiceIntegration {
         codeReq.httpBody = try JSONSerialization.data(withJSONObject: [
             "code": totpCode, "type": 1, "token_id": tokenId,
             "trust_info": ["client_type": "web", "system": "iOS", "dev_name": "Peekr"],
-            "trust": false
+            "trust": true
         ])
         let (codeData, _) = try await IntegrationHTTP.session.data(for: codeReq)
         guard let codeJSON = try JSONSerialization.jsonObject(with: codeData) as? [String: Any],
@@ -196,6 +203,10 @@ struct UGreenNASIntegration: ServiceIntegration {
               let codeBody = codeJSON["data"] as? [String: Any],
               let token = codeBody["token"] as? String else {
             throw UGreenAuthError.totpFailed
+        }
+        // Store trust token so next login can skip 2FA
+        if let trustToken = codeBody["trust_token"] as? String, !trustToken.isEmpty {
+            KeychainHelper.save(trustToken, account: trustKey)
         }
         return token
     }

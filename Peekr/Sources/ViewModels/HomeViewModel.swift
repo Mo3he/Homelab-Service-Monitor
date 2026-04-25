@@ -278,6 +278,7 @@ final class HomeViewModel: ObservableObject {
         historyStore.remove(serviceID: service.id)
         uptimeStore.remove(serviceID: service.id)
         KeychainHelper.delete(account: "ugnas-session-\(service.id.uuidString)")
+        KeychainHelper.delete(account: "ugnas-trust-\(service.id.uuidString)")
         store.remove(id: service.id)
     }
 
