@@ -277,6 +277,7 @@ final class HomeViewModel: ObservableObject {
         MetricAlertStore.shared.removeAllRules(for: service.id)
         historyStore.remove(serviceID: service.id)
         uptimeStore.remove(serviceID: service.id)
+        KeychainHelper.delete(account: "ugnas-session-\(service.id.uuidString)")
         store.remove(id: service.id)
     }
 

@@ -308,6 +308,11 @@ struct AddServiceView: View {
                 SecureField("Password", text: $password)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                if effectiveType == .ugreenNas {
+                    SecureField("TOTP Secret (optional, for 2FA)", text: $apiKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
             } header: {
                 Text("Authentication")
             } footer: {
