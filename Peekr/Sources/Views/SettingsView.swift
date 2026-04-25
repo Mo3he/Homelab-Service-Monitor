@@ -6,6 +6,7 @@ struct SettingsView: View {
     @ObservedObject private var net = NetworkMonitor.shared
     @AppStorage("autoRefreshInterval") private var interval: Double = 30
     @AppStorage("bgRefreshInterval") private var bgInterval: Double = 900
+    @AppStorage("globalOfflineNotificationsEnabled") private var offlineNotificationsEnabled: Bool = true
     @Environment(\.dismiss) private var dismiss
     @Environment(\.isPresented) private var isPresented
     @State private var showImporter = false
@@ -47,6 +48,24 @@ struct SettingsView: View {
                 networkInfoSection
 
                 Section("Notifications") {
+                    Toggle(isOn: $offlineNotificationsEnabled) {
+                        Label("Offline & Recovery Alerts", systemImage: "bell.badge.waveform")
+                    }
+
+                    NavigationLink {
+                        MetricAlertsSettingsView(vm: vm)
+                    } label: {
+                        HStack {
+                            Label("Metric Alerts", systemImage: "chart.line.uptrend.xyaxis")
+                            Spacer()
+                            let count = MetricAlertStore.shared.rules.count
+                            if count > 0 {
+                                Text("\(count)")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
                     Button {
                         showNotificationSchedules = true
                     } label: {

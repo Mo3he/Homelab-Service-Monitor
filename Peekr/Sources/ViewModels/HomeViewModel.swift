@@ -130,6 +130,7 @@ final class HomeViewModel: ObservableObject {
     /// Manual refresh (button / pull-to-refresh). Uses the same non-disruptive batch path as
     /// the background refresh, but sets isRefreshing=true for the loading indicator.
     func refreshAll() {
+        if DemoMode.isEnabled { return }
         guard !isRefreshing else { return }
         isRefreshing = true
         #if !targetEnvironment(macCatalyst)
@@ -149,6 +150,7 @@ final class HomeViewModel: ObservableObject {
     /// Interactive single-service refresh (swipe action, service detail pull-to-refresh).
     /// Shows a per-row checking indicator. Writes to liveData AND persists to store.
     func checkAndFetch(_ service: Service) async {
+        if DemoMode.isEnabled { return }
         if !network.canReachLocal && service.isLocalNetwork { return }
         guard store.services.contains(where: { $0.id == service.id }) else { return }
 
@@ -345,7 +347,8 @@ final class HomeViewModel: ObservableObject {
         #endif
 
         // Push notification (if enabled for this service)
-        if service.notificationsEnabled {
+        let globalOffline = UserDefaults.standard.object(forKey: "globalOfflineNotificationsEnabled") as? Bool ?? true
+        if service.notificationsEnabled && globalOffline {
             if new == .offline && (old == .online || old == .degraded) {
                 Task { await NotificationService.postOfflineAlert(for: service) }
             } else if (new == .online || new == .degraded) && old == .offline {
@@ -479,6 +482,7 @@ final class HomeViewModel: ObservableObject {
     // MARK: - Auto-refresh
 
     func startAutoRefresh() {
+        if DemoMode.isEnabled { return }
         autoRefreshTask?.cancel()
         guard refreshInterval > 0 else { return }
         autoRefreshTask = Task {
@@ -512,6 +516,7 @@ final class HomeViewModel: ObservableObject {
     ///
     /// `force` = true skips the per-service interval check (used by manual refreshAll).
     private func performBackgroundRefresh(force: Bool = false) async {
+        if DemoMode.isEnabled { return }
         let now = Date()
         let current = store.services
         guard !current.isEmpty else { return }

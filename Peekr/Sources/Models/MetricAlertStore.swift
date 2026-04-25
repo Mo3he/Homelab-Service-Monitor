@@ -1,7 +1,7 @@
 import Foundation
 
 /// Stores per-metric alert rules and tracks previously-seen state to avoid duplicate notifications.
-final class MetricAlertStore {
+final class MetricAlertStore: ObservableObject {
     static let shared = MetricAlertStore()
     private init() { load() }
 
@@ -30,7 +30,7 @@ final class MetricAlertStore {
     private let lastAlertKey  = "peekr.metricLastAlertState"
 
     // "serviceID:label" -> rule
-    private(set) var rules: [String: Rule] = [:]
+    @Published private(set) var rules: [String: Rule] = [:]
     // "serviceID:label" -> last seen value (for whenValueChanges dedup)
     private var lastValues: [String: String] = [:]
     // "serviceID:label" -> last "breached" state (for whenAlert and threshold dedup)

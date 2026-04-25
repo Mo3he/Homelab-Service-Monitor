@@ -137,6 +137,6 @@ struct MetricAlertConfigSheet: View {
     }
 }
 
-private func formatThresholdValue(_ v: Double) -> String {
+func formatThresholdValue(_ v: Double) -> String {
     v.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(v)) : String(format: "%.2f", v)
 }

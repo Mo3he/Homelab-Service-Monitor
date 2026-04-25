@@ -11,6 +11,7 @@ import UserNotifications
 @MainActor
 enum BackgroundRefreshCoordinator {
     static func refreshAll() async {
+        if DemoMode.isEnabled { return }
         let store        = ServiceStore.shared
         let live         = LiveDataStore.shared
         let network      = NetworkMonitor.shared
@@ -82,8 +83,9 @@ enum BackgroundRefreshCoordinator {
                 eventStore.recordTransition(previousStatus: previousStatus,
                                             newStatus: .offline,
                                             service: service)
+                let globalOffline = UserDefaults.standard.object(forKey: "globalOfflineNotificationsEnabled") as? Bool ?? true
                 if (previousStatus == .online || previousStatus == .degraded)
-                   && service.notificationsEnabled {
+                   && service.notificationsEnabled && globalOffline {
                     await NotificationService.postOfflineAlert(for: service)
                 }
                 continue
@@ -96,8 +98,9 @@ enum BackgroundRefreshCoordinator {
             eventStore.recordTransition(previousStatus: previousStatus,
                                         newStatus: liveEntry.status,
                                         service: service)
+            let globalOffline = UserDefaults.standard.object(forKey: "globalOfflineNotificationsEnabled") as? Bool ?? true
             if previousStatus == .offline && (liveEntry.status == .online || liveEntry.status == .degraded)
-               && service.notificationsEnabled {
+               && service.notificationsEnabled && globalOffline {
                 await NotificationService.postRecoveryAlert(for: service)
             }
 

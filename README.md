@@ -6,13 +6,15 @@ A native iOS/iPadOS/macOS app for monitoring your self-hosted homelab services a
 
 ### Monitoring
 - HTTP/HTTPS/TCP health checks with live latency
-- 29 built-in integrations with live metrics fetched from each service's API
+- 30 built-in integrations with live metrics fetched from each service's API
 - Latency sparkline and 30-check history per service
 - Uptime percentage over 24h, 7 days, and 30 days
 - Status event log across all services
 
 ### Self-hosted services
-Home Assistant, AdGuard Home, Grafana, Portainer, Jellyfin, Plex, Sonarr, Radarr, Prowlarr, Overseerr, Proxmox, TrueNAS, Traefik, Unifi Controller, Pi-hole, Nextcloud, Vaultwarden, Immich, Paperless-ngx, Frigate, ntfy, qBittorrent, OpenWrt, Glances, Nginx Proxy Manager, GitHub, and Generic (any HTTP endpoint)
+Home Assistant, AdGuard Home, Grafana, Portainer, Jellyfin, Plex, Sonarr, Radarr, Prowlarr, Overseerr, Proxmox, TrueNAS, UGREEN NAS (UGOS Pro), Traefik, Unifi Controller, Pi-hole, Nextcloud, Vaultwarden, Immich, Paperless-ngx, Frigate, ntfy, qBittorrent, OpenWrt, Glances, Nginx Proxy Manager, GitHub, and Generic (any HTTP endpoint)
+
+UGREEN NAS handles the UGOS Pro auth flow end-to-end: username + password + a one-time 2FA code on first setup, then a cached trust token reused for subsequent logins so the OTP isn't needed again.
 
 ### Cloud API services
 Dedicated monitoring for cloud APIs that don't require a host or port - just an API key:
@@ -35,9 +37,14 @@ Cloud services skip the TCP/HTTP ping entirely and derive their status from whet
 - Widget reads from a shared App Group container - always up to date
 
 ### Notifications
-- Background refresh every 15 minutes
+- Background refresh every 15 minutes (interval configurable in Settings)
 - Offline and recovery alerts per service (toggle per service)
 - Time-sensitive interruption level for offline alerts
+- **Per-metric alert rules** — tap the bell on any metric in the detail view to set a rule:
+  - *When flagged* — fires when the metric enters its alert state
+  - *When value changes* — fires whenever the metric's string value changes
+  - *Custom threshold* — fires when the extracted numeric value crosses an above/below limit (e.g. CPU temp > 80°C, free space < 10 GB)
+- **Summary notifications** — schedule recurring summaries that bundle the latest metrics from one or more services. Daily at a specific time, or every N hours. Total alert count is reflected as the badge.
 
 ### Organization
 - Group services into custom sections
@@ -91,12 +98,16 @@ Build and run on a simulator or device. The widget extension is the `PeekrWidget
 
 ```
 Peekr/Sources/
-  App/              - Entry point, background refresh, onboarding gate
-  Models/           - Service, ServiceType, ServiceStatus, UptimeStore, StatusHistory
-  Views/            - All SwiftUI views (iPhone, iPad, macOS, onboarding)
-  ViewModels/       - HomeViewModel
+  App/              - Entry point, background refresh registration, notification routing
+  Models/           - Service, ServiceType, ServiceStatus, UptimeStore, StatusHistory,
+                      MetricAlertStore, MetricHistoryStore, MetricSummarySchedule
+  Views/            - All SwiftUI views (iPhone, iPad, macOS, onboarding,
+                      metric alert config, notification schedules, settings)
+  ViewModels/       - HomeViewModel, LiveDataStore (in-memory live status/metrics cache)
   Services/         - PingService, ServiceStore, NetworkMonitor, KeychainHelper,
-                      NotificationService, UptimeReportGenerator
+                      NotificationService, SummaryNotificationManager,
+                      BackgroundRefreshCoordinator, StatusEventStore,
+                      InsecureTrust, UptimeReportGenerator
     Integrations/   - One file per service type integration
   AppIntents/       - Siri Shortcuts / App Intents
 
@@ -104,6 +115,8 @@ PeekrWidget/        - WidgetKit extension (overview + configurable service widge
 project.yml         - XcodeGen spec (source of truth for the Xcode project)
 Peekr/PrivacyInfo.xcprivacy - Privacy manifest
 ```
+
+Code paths gated by `// PAID_ACCOUNT:` comments (iCloud KV sync, App Group container, entitlement files in `project.yml`) are kept in-tree but commented out — they require an active Apple Developer Program subscription. Until the account is upgraded, the app uses `UserDefaults.standard` and ships per-device only.
 
 ## Adding a New Integration
 
