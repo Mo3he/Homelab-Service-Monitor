@@ -96,6 +96,12 @@ enum BackgroundRefreshCoordinator {
                         // If the network probe says we're not on the local network, preserve
                         // last-known status instead of marking offline.
                         if service.isLocalNetwork && !network.canReachLocal { return }
+                        // A cancelled error is transient (TCP reset, iOS killed the task) —
+                        // not a genuine outage. Skip the update entirely.
+                        if (error as? URLError)?.code == .cancelled {
+                            AppLogger.refresh.info("[BG] \(service.name, privacy: .public) ping cancelled (transient), preserving previous status")
+                            return
+                        }
                         AppLogger.refresh.error("[BG] \(service.name, privacy: .public) ping failed: \(error.localizedDescription, privacy: .public)")
                         liveEntry.status = .offline
                         newLiveData[service.id] = liveEntry

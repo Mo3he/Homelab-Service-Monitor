@@ -226,6 +226,13 @@ final class HomeViewModel: ObservableObject {
                     updated.status = baseStatus
                 }
             } catch {
+                // A cancelled error means the request was interrupted (TCP reset, iOS
+                // killed the task, etc.) — not a genuine service outage. Preserve the
+                // previous status so a single hiccup doesn't flip the row to offline.
+                if (error as? URLError)?.code == .cancelled {
+                    AppLogger.refresh.info("checkAndFetch: \(service.name, privacy: .public) ping cancelled (transient), preserving previous status")
+                    return
+                }
                 updated.status         = .offline
                 updated.latencyMs      = nil
                 updated.httpStatusCode = nil
@@ -691,6 +698,12 @@ final class HomeViewModel: ObservableObject {
                         // last-known status instead of marking offline — mirrors the behaviour
                         // of non-failover local services that are skipped entirely when off-network.
                         if service.isLocalNetwork && !self.network.canReachLocal { return }
+                        // A cancelled error is transient (TCP reset, iOS killed the task) —
+                        // not a genuine outage. Skip the update entirely.
+                        if (error as? URLError)?.code == .cancelled {
+                            AppLogger.refresh.info("[BG] \(service.name, privacy: .public) ping cancelled (transient), preserving previous status")
+                            return
+                        }
                         liveEntry.status = .offline
                         newLiveData[service.id] = liveEntry
                         newMetrics[service.id]  = []
