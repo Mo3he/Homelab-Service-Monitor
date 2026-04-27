@@ -211,8 +211,10 @@ final class HomeViewModel: ObservableObject {
 
         var usingFailover = false
         if !service.serviceType.isCloudService {
+            let rawTimeout = UserDefaults.standard.double(forKey: "requestTimeoutSeconds")
+            let timeout = max(1, min(rawTimeout > 0 ? rawTimeout : 5, 60))
             do {
-                let result = try await PingService.shared.check(service)
+                let result = try await PingService.shared.check(service, timeout: timeout)
                 updated.latencyMs      = result.latencyMs
                 updated.httpStatusCode = result.httpStatusCode
                 usingFailover          = result.usedFailover
@@ -225,12 +227,21 @@ final class HomeViewModel: ObservableObject {
                 } else {
                     updated.status = baseStatus
                 }
+                live.consecutiveFailures[service.id] = 0
             } catch {
                 // A cancelled error means the request was interrupted (TCP reset, iOS
                 // killed the task, etc.) — not a genuine service outage. Preserve the
                 // previous status so a single hiccup doesn't flip the row to offline.
                 if (error as? URLError)?.code == .cancelled {
                     AppLogger.refresh.info("checkAndFetch: \(service.name, privacy: .public) ping cancelled (transient), preserving previous status")
+                    return
+                }
+                let failures = (live.consecutiveFailures[service.id] ?? 0) + 1
+                live.consecutiveFailures[service.id] = failures
+                let retryThreshold = UserDefaults.standard.integer(forKey: "retryCountBeforeOffline")
+                let threshold = retryThreshold > 0 ? retryThreshold : 1
+                if failures < threshold {
+                    AppLogger.refresh.info("checkAndFetch: \(service.name, privacy: .public) failure \(failures)/\(threshold), not yet offline")
                     return
                 }
                 updated.status         = .offline
@@ -268,6 +279,9 @@ final class HomeViewModel: ObservableObject {
         let integration = IntegrationProvider.integration(for: updated)
         do {
             var fetched = try await integration.fetchMetrics(service: updated)
+            if let latency = updated.latencyMs {
+                fetched.insert(ServiceMetric(label: "Response Time", value: "\(Int(latency)) ms", icon: "clock", color: .secondary), at: 0)
+            }
             fetched = applyMetricOrder(fetched, serviceID: updated.id)
             live.setMetrics(fetched, for: updated.id)
             live.setError(nil, for: updated.id)
@@ -421,11 +435,12 @@ final class HomeViewModel: ObservableObject {
         #endif
 
         // Push notification (if enabled for this service)
-        let globalOffline = UserDefaults.standard.object(forKey: "globalOfflineNotificationsEnabled") as? Bool ?? true
-        if service.notificationsEnabled && globalOffline {
-            if new == .offline && (old == .online || old == .degraded) {
+        if service.notificationsEnabled {
+            let globalOffline  = UserDefaults.standard.object(forKey: "globalOfflineNotificationsEnabled")  as? Bool ?? true
+            let globalRecovery = UserDefaults.standard.object(forKey: "globalRecoveryNotificationsEnabled") as? Bool ?? true
+            if new == .offline && (old == .online || old == .degraded) && globalOffline {
                 Task { await NotificationService.postOfflineAlert(for: service) }
-            } else if (new == .online || new == .degraded) && old == .offline {
+            } else if (new == .online || new == .degraded) && old == .offline && globalRecovery {
                 Task { await NotificationService.postRecoveryAlert(for: service) }
             }
         }
@@ -680,7 +695,9 @@ final class HomeViewModel: ObservableObject {
                     }
 
                     do {
-                        let result = try await PingService.shared.check(service)
+                        let rawTimeout = UserDefaults.standard.double(forKey: "requestTimeoutSeconds")
+                        let timeout = max(1, min(rawTimeout > 0 ? rawTimeout : 5, 60))
+                        let result = try await PingService.shared.check(service, timeout: timeout)
                         liveEntry.latencyMs      = result.latencyMs
                         liveEntry.httpStatusCode = result.httpStatusCode
                         liveEntry.usingFailover  = result.usedFailover

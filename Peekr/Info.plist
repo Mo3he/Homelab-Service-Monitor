@@ -29,6 +29,8 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Peekr uses the local network to ping your development services.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Peekr uses Face ID to protect access to your service dashboard.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>

@@ -78,7 +78,9 @@ enum BackgroundRefreshCoordinator {
                     }
 
                     do {
-                        let result = try await PingService.shared.check(service)
+                        let rawTimeout = UserDefaults.standard.double(forKey: "requestTimeoutSeconds")
+                        let timeout = max(1, min(rawTimeout > 0 ? rawTimeout : 5, 60))
+                        let result = try await PingService.shared.check(service, timeout: timeout)
                         liveEntry.latencyMs      = result.latencyMs
                         liveEntry.httpStatusCode = result.httpStatusCode
                         liveEntry.usingFailover  = result.usedFailover
@@ -92,6 +94,7 @@ enum BackgroundRefreshCoordinator {
                             liveEntry.status = baseStatus
                         }
                         AppLogger.refresh.info("[BG] \(service.name, privacy: .public) -> \(liveEntry.status.rawValue, privacy: .public) (\(Int(result.latencyMs))ms)")
+                        await MainActor.run { LiveDataStore.shared.consecutiveFailures[service.id] = 0 }
                     } catch {
                         // If the network probe says we're not on the local network, preserve
                         // last-known status instead of marking offline.
@@ -100,6 +103,17 @@ enum BackgroundRefreshCoordinator {
                         // not a genuine outage. Skip the update entirely.
                         if (error as? URLError)?.code == .cancelled {
                             AppLogger.refresh.info("[BG] \(service.name, privacy: .public) ping cancelled (transient), preserving previous status")
+                            return
+                        }
+                        let failures = await MainActor.run {
+                            let f = (LiveDataStore.shared.consecutiveFailures[service.id] ?? 0) + 1
+                            LiveDataStore.shared.consecutiveFailures[service.id] = f
+                            return f
+                        }
+                        let retryThreshold = UserDefaults.standard.integer(forKey: "retryCountBeforeOffline")
+                        let threshold = retryThreshold > 0 ? retryThreshold : 1
+                        if failures < threshold {
+                            AppLogger.refresh.info("[BG] \(service.name, privacy: .public) failure \(failures)/\(threshold), not yet offline")
                             return
                         }
                         AppLogger.refresh.error("[BG] \(service.name, privacy: .public) ping failed: \(error.localizedDescription, privacy: .public)")
@@ -128,15 +142,18 @@ enum BackgroundRefreshCoordinator {
                     eventStore.recordTransition(previousStatus: previousStatus,
                                                 newStatus: liveEntry.status,
                                                 service: service)
-                    let globalOffline = UserDefaults.standard.object(forKey: "globalOfflineNotificationsEnabled") as? Bool ?? true
+                    let globalRecovery = UserDefaults.standard.object(forKey: "globalRecoveryNotificationsEnabled") as? Bool ?? true
                     if previousStatus == .offline && (liveEntry.status == .online || liveEntry.status == .degraded)
-                       && service.notificationsEnabled && globalOffline {
+                       && service.notificationsEnabled && globalRecovery {
                         await NotificationService.postRecoveryAlert(for: service)
                     }
 
                     let integration = IntegrationProvider.integration(for: service)
                     do {
                         var fetched = try await integration.fetchMetrics(service: service)
+                        if let latency = liveEntry.latencyMs {
+                            fetched.insert(ServiceMetric(label: "Response Time", value: "\(Int(latency)) ms", icon: "clock", color: .secondary), at: 0)
+                        }
                         fetched = applyMetricOrder(fetched, serviceID: service.id)
                         newMetrics[service.id] = fetched
                         newErrors.removeValue(forKey: service.id)

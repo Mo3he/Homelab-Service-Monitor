@@ -16,6 +16,8 @@ final class LiveDataStore: ObservableObject {
     @Published var metricsError: [UUID: String] = [:]
     @Published private(set) var checkingIDs: Set<UUID> = []
     @Published var lastRefreshed: Date?
+    /// Consecutive ping failures per service before marking offline.
+    var consecutiveFailures: [UUID: Int] = [:]
     /// Hidden metric labels per service - kept here so ServiceRowView can filter without vm.
     @Published var hiddenMetricLabels: [UUID: Set<String>] = [:]
 
@@ -68,6 +70,7 @@ final class LiveDataStore: ObservableObject {
         metrics.removeValue(forKey: id)
         metricsError.removeValue(forKey: id)
         hiddenMetricLabels.removeValue(forKey: id)
+        consecutiveFailures.removeValue(forKey: id)
         checkingIDs.remove(id)
         MetricHistoryStore.shared.remove(serviceID: id)
     }

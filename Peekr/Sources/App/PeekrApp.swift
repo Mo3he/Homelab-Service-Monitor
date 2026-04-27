@@ -54,7 +54,11 @@ struct PeekrApp: App {
         // would read 0 here and silently disable background refresh.
         UserDefaults.standard.register(defaults: [
             "bgRefreshInterval": 900.0,
-            "autoRefreshInterval": 30.0
+            "autoRefreshInterval": 30.0,
+            "historyRetentionDays": 0,
+            "globalRecoveryNotificationsEnabled": true,
+            "requestTimeoutSeconds": 5.0,
+            "retryCountBeforeOffline": 1
         ])
 
         // Demo mode: seeds realistic fake services for App Store screenshots.

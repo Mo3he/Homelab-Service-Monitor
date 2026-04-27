@@ -23,8 +23,18 @@ final class StatusHistoryStore: ObservableObject {
         let snap = StatusSnapshot(latencyMs: latencyMs, status: status, timestamp: Date())
         var snaps = history[serviceID, default: []]
         snaps.append(snap)
+        let retentionDays = UserDefaults.standard.integer(forKey: "historyRetentionDays")
+        if retentionDays > 0 {
+            let cutoff = Date().addingTimeInterval(-Double(retentionDays) * 86400)
+            snaps = snaps.filter { $0.timestamp > cutoff }
+        }
         if snaps.count > maxPerService { snaps.removeFirst(snaps.count - maxPerService) }
         history[serviceID] = snaps
+        save()
+    }
+
+    func clearAll() {
+        history.removeAll()
         save()
     }
 

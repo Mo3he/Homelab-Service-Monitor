@@ -16,7 +16,7 @@ struct RefreshAllServicesIntent: AppIntent {
         await withTaskGroup(of: Void.self) { group in
             for service in services {
                 group.addTask {
-                    _ = try? await PingService.shared.check(service)
+                    _ = try? await PingService.shared.check(service, timeout: 5)
                 }
             }
         }

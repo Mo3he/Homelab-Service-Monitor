@@ -32,10 +32,10 @@ actor PingService {
                           delegateQueue: nil)
     }()
 
-    func check(_ service: Service) async throws -> CheckResult {
+    func check(_ service: Service, timeout: Double = 5) async throws -> CheckResult {
         AppLogger.ping.debug("Checking \(service.name, privacy: .public) (\(service.host, privacy: .public))")
         do {
-            let result = try await doCheck(service, using: session)
+            let result = try await doCheck(service, using: session, timeout: timeout)
             AppLogger.ping.info("\(service.name, privacy: .public) OK — \(Int(result.latencyMs))ms HTTP \(result.httpStatusCode.map(String.init) ?? "n/a", privacy: .public)")
             return result
         } catch {
@@ -46,28 +46,28 @@ actor PingService {
             AppLogger.ping.info("\(service.name, privacy: .public) primary failed, trying failover host")
             var alt = service
             alt.host = failover.trimmingCharacters(in: .whitespaces)
-            var result = try await doCheck(alt, using: failoverSession)
+            var result = try await doCheck(alt, using: failoverSession, timeout: timeout)
             result.usedFailover = true
             AppLogger.ping.info("\(service.name, privacy: .public) OK via failover — \(Int(result.latencyMs))ms HTTP \(result.httpStatusCode.map(String.init) ?? "n/a", privacy: .public)")
             return result
         }
     }
 
-    private func doCheck(_ service: Service, using session: URLSession) async throws -> CheckResult {
+    private func doCheck(_ service: Service, using session: URLSession, timeout: Double) async throws -> CheckResult {
         if service.serviceType.prefersTCPPing || !service.scheme.isHTTP {
             AppLogger.ping.debug("\(service.name, privacy: .public) using TCP check")
-            let ms = try await tcpCheck(host: service.host, port: service.port)
+            let ms = try await tcpCheck(host: service.host, port: service.port, timeout: timeout)
             return CheckResult(latencyMs: ms, httpStatusCode: nil)
         }
         AppLogger.ping.debug("\(service.name, privacy: .public) using HTTP check")
-        return try await httpCheck(service, using: session)
+        return try await httpCheck(service, using: session, timeout: timeout)
     }
 
     // MARK: - HTTP
 
-    private func httpCheck(_ service: Service, using session: URLSession) async throws -> CheckResult {
+    private func httpCheck(_ service: Service, using session: URLSession, timeout: Double) async throws -> CheckResult {
         guard let url = service.pingURL else { throw CheckError.invalidURL }
-        let totalBudget: TimeInterval = 5
+        let totalBudget: TimeInterval = timeout
         let start = Date()
 
         var request = URLRequest(url: url)
