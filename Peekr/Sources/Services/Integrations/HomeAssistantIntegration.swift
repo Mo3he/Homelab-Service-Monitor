@@ -13,9 +13,10 @@ struct HomeAssistantIntegration: ServiceIntegration {
               let statesURL = URL(string: "\(base)/api/states") else {
             throw IntegrationError.badURL
         }
-        // Fetch config (version) and states in parallel
+        // Fetch config (version), states, and repairs in parallel
         async let configResult  = fetchJSON(url: configURL, headers: headers)
         async let statesResult  = fetchJSON(url: statesURL, headers: headers)
+        async let repairsCount  = fetchRepairsCount(base: base, token: token)
 
         var metrics: [ServiceMetric] = []
 
@@ -79,6 +80,73 @@ struct HomeAssistantIntegration: ServiceIntegration {
             ))
         }
 
+        // Repairs: active issues via WebSocket API
+        if let count = await repairsCount {
+            metrics.append(ServiceMetric(
+                label: "Repairs",
+                value: "\(count)",
+                icon: "wrench.and.screwdriver.fill",
+                color: count == 0 ? .secondary : .orange,
+                isAlert: count > 0
+            ))
+        }
+
         return metrics
+    }
+
+    /// Fetches active repair issues via the Home Assistant WebSocket API.
+    /// Opens a one-shot connection, authenticates, sends `repairs/list_issues`, and disconnects.
+    private func fetchRepairsCount(base: String, token: String) async -> Int? {
+        let wsScheme = base.hasPrefix("https") ? "wss" : "ws"
+        let stripped = base
+            .replacingOccurrences(of: "https://", with: "")
+            .replacingOccurrences(of: "http://", with: "")
+        guard let url = URL(string: "\(wsScheme)://\(stripped)/api/websocket") else { return nil }
+
+        let ws = IntegrationHTTP.session.webSocketTask(with: url)
+        ws.resume()
+
+        do {
+            // 1. Receive auth_required
+            let first = try await ws.receive()
+            guard case .string(let text) = first,
+                  text.contains("auth_required") else {
+                ws.cancel(with: .normalClosure, reason: nil)
+                return nil
+            }
+
+            // 2. Send auth
+            let authMsg = #"{"type":"auth","access_token":"\#(token)"}"#
+            try await ws.send(.string(authMsg))
+
+            // 3. Receive auth_ok
+            let second = try await ws.receive()
+            guard case .string(let authResp) = second,
+                  authResp.contains("auth_ok") else {
+                ws.cancel(with: .normalClosure, reason: nil)
+                return nil
+            }
+
+            // 4. Request repairs list
+            try await ws.send(.string(#"{"id":1,"type":"repairs/list_issues"}"#))
+
+            // 5. Receive result
+            let third = try await ws.receive()
+            ws.cancel(with: .normalClosure, reason: nil)
+
+            guard case .string(let resultText) = third,
+                  let data = resultText.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  json["success"] as? Bool == true,
+                  let result = json["result"] as? [String: Any],
+                  let issues = result["issues"] as? [[String: Any]] else {
+                return nil
+            }
+
+            return issues.filter { ($0["dismissed_version"] as? String) == nil }.count
+        } catch {
+            ws.cancel(with: .normalClosure, reason: nil)
+            return nil
+        }
     }
 }
