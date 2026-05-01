@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Homelab Service Monitor</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>HSM</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<!-- Export compliance: app uses only standard OS HTTPS (TLS) - no proprietary encryption -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+		<string>_https._tcp</string>
+		<string>_home-assistant._tcp</string>
+		<string>_plexmediaserver._tcp</string>
+		<string>_jellyfin._tcp</string>
+		<string>_unifi._tcp</string>
+		<string>_adguard-home._tcp</string>
+		<string>_portainer._tcp</string>
+		<string>_proxmox._tcp</string>
+		<string>_grafana._tcp</string>
+		<string>_pihole._tcp</string>
+		<string>_sonarr._tcp</string>
+		<string>_radarr._tcp</string>
+		<string>_prowlarr._tcp</string>
+		<string>_overseerr._tcp</string>
+		<string>_nextcloud._tcp</string>
+		<string>_traefik._tcp</string>
+		<string>_immich._tcp</string>
+		<string>_ntfy._tcp</string>
+		<string>_frigate._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Homelab Service Monitor uses the local network to ping your services.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Homelab Service Monitor uses Face ID to protect access to your dashboard.</string>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>net.mohome.hsm.refresh</string>
+		<string>net.mohome.hsm.summaryNotification</string>
+		<string>net.mohome.hsm.processing</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+</dict>
+</plist>

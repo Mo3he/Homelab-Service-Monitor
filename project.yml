@@ -1,6 +1,6 @@
-name: Peekr
+name: HSM
 options:
-  bundleIdPrefix: com.peekr
+  bundleIdPrefix: net.mohome
   deploymentTarget:
     iOS: "17.0"
   xcodeVersion: "16"
@@ -15,61 +15,61 @@ settings:
     SWIFT_EMIT_LOC_STRINGS: "YES"
 
 targets:
-  Peekr:
+  HSM:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
     sources:
-      - path: Peekr/Sources
-      - path: Peekr/PrivacyInfo.xcprivacy
+      - path: HSM/Sources
+      - path: HSM/PrivacyInfo.xcprivacy
         buildPhase: resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: net.mohome.peekr
+        PRODUCT_BUNDLE_IDENTIFIER: net.mohome.hsm
         # Catalyst gets a distinct bundle ID so it can coexist with the iOS app on
         # the same Mac. Replaces the now-deprecated DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER.
-        "PRODUCT_BUNDLE_IDENTIFIER[sdk=macosx*]": maccatalyst.net.mohome.peekr
-        INFOPLIST_FILE: Peekr/Info.plist
+        "PRODUCT_BUNDLE_IDENTIFIER[sdk=macosx*]": maccatalyst.net.mohome.hsm
+        INFOPLIST_FILE: HSM/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
         ENABLE_DEBUG_DYLIB: "NO"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: "YES"
     entitlements:
-      path: Peekr/Peekr.entitlements
+      path: HSM/HSM.entitlements
       properties:
-        com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)net.mohome.peekr
+        com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)net.mohome.hsm
         com.apple.security.application-groups:
-          - group.net.mohome.peekr
+          - group.net.mohome.hsm
     dependencies:
-      - target: PeekrWidget
+      - target: HSMWidget
         embed: true
 
-  PeekrWidget:
+  HSMWidget:
     type: app-extension
     platform: iOS
     deploymentTarget: "17.0"
     sources:
-      - path: PeekrWidget/Sources
+      - path: HSMWidget/Sources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: net.mohome.peekr.widget
-        INFOPLIST_FILE: PeekrWidget/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: net.mohome.hsm.widget
+        INFOPLIST_FILE: HSMWidget/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
         SWIFT_VERSION: 5.10
         TARGETED_DEVICE_FAMILY: "1,2"
-        INFOPLIST_KEY_NSExtensionPrincipalClass: PeekrWidgetBundle
+        INFOPLIST_KEY_NSExtensionPrincipalClass: HSMWidgetBundle
     entitlements:
-      path: PeekrWidget/PeekrWidget.entitlements
+      path: HSMWidget/HSMWidget.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.net.mohome.peekr
+          - group.net.mohome.hsm
 
 schemes:
-  Peekr:
+  HSM:
     build:
       targets:
-        Peekr: all
+        HSM: all
     run:
       config: Debug
     test:
@@ -81,15 +81,15 @@ schemes:
     archive:
       config: Release
 
-  PeekrWidget:
+  HSMWidget:
     build:
       targets:
-        PeekrWidget: all
+        HSMWidget: all
     run:
       config: Debug
       environmentVariables:
         - variable: _XCWidgetKind
-          value: PeekrMonitorWidget
+          value: HSMMonitorWidget
           isEnabled: true
     test:
       config: Debug
