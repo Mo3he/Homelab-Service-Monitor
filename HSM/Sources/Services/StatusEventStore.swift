@@ -21,13 +21,19 @@ final class StatusEventStore: ObservableObject {
     /// "the service moved offline" events).
     func recordTransition(previousStatus old: ServiceStatus,
                           newStatus new: ServiceStatus,
-                          service: Service) {
+                          service: Service,
+                          latencyMs: Double? = nil,
+                          httpStatusCode: Int? = nil,
+                          errorDetail: String? = nil) {
         guard old != new, old != .unknown, old != .checking else { return }
         let event = StatusEvent(
             serviceID: service.id,
             serviceName: service.name,
             oldStatus: old,
-            newStatus: new
+            newStatus: new,
+            latencyMs: latencyMs,
+            httpStatusCode: httpStatusCode,
+            errorDetail: errorDetail
         )
         events.insert(event, at: 0)
         if events.count > maxEvents { events = Array(events.prefix(maxEvents)) }
@@ -68,4 +74,25 @@ final class StatusEventStore: ObservableObject {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("statusEvents.json")
     }()
+}
+
+/// Returns a human-readable failure reason suitable for display in the Status Log.
+func statusEventErrorDetail(_ error: Error) -> String {
+    if let ie = error as? IntegrationError {
+        return ie.localizedDescription
+    }
+    if let ue = error as? URLError {
+        switch ue.code {
+        case .timedOut:                        return "Request timed out"
+        case .cannotConnectToHost:             return "Cannot connect to host"
+        case .cannotFindHost:                  return "Host not found"
+        case .networkConnectionLost:           return "Network connection lost"
+        case .notConnectedToInternet:          return "No internet connection"
+        case .serverCertificateUntrusted,
+             .serverCertificateHasUnknownRoot: return "Certificate not trusted"
+        case .badServerResponse:               return "Bad server response"
+        default:                               return ue.localizedDescription
+        }
+    }
+    return error.localizedDescription
 }

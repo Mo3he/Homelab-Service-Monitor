@@ -55,8 +55,7 @@ Cloud services skip the TCP/HTTP ping entirely and derive their status from whet
 ### Platform
 - iPhone: tab bar layout
 - iPad: three-column NavigationSplitView (services | detail | event log)
-- Mac (Catalyst): full app
-- Mac (native macOS target): menu bar status indicator (requires a separate native macOS target; not available under Catalyst since `MenuBarExtra` is macOS-only)
+- Mac (Catalyst): full app with menu bar status indicator
 - Onboarding flow on first launch
 
 ### Data
@@ -121,6 +120,11 @@ HSM/PrivacyInfo.xcprivacy - Privacy manifest
 1. Add a case to `ServiceType.swift` with `displayName`, `icon`, `defaultPort`, `authMode`, etc.
 2. Create `YourIntegration.swift` in `Services/Integrations/` conforming to `ServiceIntegration`
 3. Register it in `IntegrationProvider.integration(for:)` in `ServiceIntegration.swift`
+
+## Roadmap
+
+### Upcoming Integrations
+- **Synology NAS** - DSM REST API, session-based auth, metrics: DSM version/uptime, volume/pool health, CPU + RAM utilization, disk SMART status
 
 ## License
 

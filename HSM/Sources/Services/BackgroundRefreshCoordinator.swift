@@ -148,7 +148,8 @@ enum BackgroundRefreshCoordinator {
                         pendingStoreUpdates.append(merged(service: service, liveEntry: liveEntry))
                         eventStore.recordTransition(previousStatus: previousStatus,
                                                     newStatus: .offline,
-                                                    service: service)
+                                                    service: service,
+                                                    errorDetail: statusEventErrorDetail(error))
                         let globalOffline = UserDefaults.standard.object(forKey: "globalOfflineNotificationsEnabled") as? Bool ?? true
                         if (previousStatus == .online || previousStatus == .degraded)
                            && service.notificationsEnabled && globalOffline {
@@ -163,7 +164,9 @@ enum BackgroundRefreshCoordinator {
                     pendingStoreUpdates.append(merged(service: service, liveEntry: liveEntry))
                     eventStore.recordTransition(previousStatus: previousStatus,
                                                 newStatus: liveEntry.status,
-                                                service: service)
+                                                service: service,
+                                                latencyMs: liveEntry.latencyMs,
+                                                httpStatusCode: liveEntry.httpStatusCode)
                     let globalRecovery = UserDefaults.standard.object(forKey: "globalRecoveryNotificationsEnabled") as? Bool ?? true
                     if previousStatus == .offline && (liveEntry.status == .online || liveEntry.status == .degraded)
                        && service.notificationsEnabled && globalRecovery {

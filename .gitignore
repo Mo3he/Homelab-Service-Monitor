@@ -50,3 +50,7 @@ Screenshots/sim*/
 
 # Design asset backups (binary PNGs, kept locally only)
 design/icon-backups/
+
+# Internal dev notes
+AGENTS.md
+ROADMAP.md

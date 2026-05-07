@@ -255,7 +255,8 @@ final class HomeViewModel: ObservableObject {
                 live.setMetrics([], for: service.id)
                 let certError = isTLSCertError(error) && !service.allowSelfSignedCert
                 live.setError(certError ? "Certificate not trusted. Enable \"Allow Self-Signed Certificate\" in Edit." : nil, for: service.id)
-                recordTransition(previousStatus: previousStatus, service: updated)
+                recordTransition(previousStatus: previousStatus, service: updated,
+                                 errorDetail: statusEventErrorDetail(error))
                 historyStore.record(serviceID: service.id, status: .offline, latencyMs: nil)
                 uptimeStore.record(serviceID: service.id, status: .offline)
                 return
@@ -263,7 +264,8 @@ final class HomeViewModel: ObservableObject {
         }
 
         updated.lastChecked = Date()
-        recordTransition(previousStatus: previousStatus, service: updated)
+        recordTransition(previousStatus: previousStatus, service: updated,
+                         latencyMs: updated.latencyMs, httpStatusCode: updated.httpStatusCode)
         AppLogger.refresh.info("checkAndFetch: \(service.name, privacy: .public) -> \(updated.status.rawValue, privacy: .public) (\(Int(updated.latencyMs ?? 0))ms HTTP \(updated.httpStatusCode.map(String.init) ?? "n/a", privacy: .public))")
         if !service.serviceType.isCloudService {
             historyStore.record(serviceID: updated.id, status: updated.status, latencyMs: updated.latencyMs)
@@ -427,13 +429,19 @@ final class HomeViewModel: ObservableObject {
 
     // MARK: - Status events
 
-    private func recordTransition(previousStatus old: ServiceStatus, service: Service) {
+    private func recordTransition(previousStatus old: ServiceStatus,
+                                  service: Service,
+                                  latencyMs: Double? = nil,
+                                  httpStatusCode: Int? = nil,
+                                  errorDetail: String? = nil) {
         let new = live.liveData[service.id]?.status ?? service.status
         guard old != new, old != .unknown, old != .checking else { return }
 
         // Persist to the shared event store (also keeps `vm.events` in sync via the
         // assign in init).
-        eventStore.recordTransition(previousStatus: old, newStatus: new, service: service)
+        eventStore.recordTransition(previousStatus: old, newStatus: new, service: service,
+                                    latencyMs: latencyMs, httpStatusCode: httpStatusCode,
+                                    errorDetail: errorDetail)
 
         // Haptic on meaningful transitions (foreground only; BG path doesn't get here)
         #if !targetEnvironment(macCatalyst)
@@ -752,7 +760,8 @@ final class HomeViewModel: ObservableObject {
                         newMetrics[service.id]  = []
                         newErrors.removeValue(forKey: service.id)
                         var tmp = service; tmp.status = .offline
-                        self.recordTransition(previousStatus: previousStatus, service: tmp)
+                        self.recordTransition(previousStatus: previousStatus, service: tmp,
+                                             errorDetail: statusEventErrorDetail(error))
                         self.historyStore.record(serviceID: service.id, status: .offline, latencyMs: nil)
                         self.uptimeStore.record(serviceID: service.id, status: .offline)
                         return
@@ -760,7 +769,8 @@ final class HomeViewModel: ObservableObject {
 
                     newLiveData[service.id] = liveEntry
                     var tmp = service; tmp.status = liveEntry.status
-                    self.recordTransition(previousStatus: previousStatus, service: tmp)
+                    self.recordTransition(previousStatus: previousStatus, service: tmp,
+                                         latencyMs: liveEntry.latencyMs, httpStatusCode: liveEntry.httpStatusCode)
                     self.historyStore.record(serviceID: service.id, status: liveEntry.status, latencyMs: liveEntry.latencyMs)
                     self.uptimeStore.record(serviceID: service.id, status: liveEntry.status)
 
